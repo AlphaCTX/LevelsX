@@ -1,2 +1,8 @@
 players: {}
 moneyReward: 100.0
+challengeGoals:
+  MOB_KILLS: 10
+  DAMAGE_TAKEN: 500
+  MONEY_EARNED: 1000
+  MONEY_SPENT: 1000
+  KILOMETERS_TRAVELED: 5

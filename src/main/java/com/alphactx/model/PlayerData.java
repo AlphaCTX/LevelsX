@@ -4,6 +4,14 @@ import java.util.EnumMap;
 import java.util.Map;
 import java.util.UUID;
 
+import com.alphactx.model.ChallengeType;
+
+/**
+ * Stores player related data such as level, XP, skills and statistics.
+ * Challenge progress is tracked per {@link ChallengeType} so daily
+ * challenges can be completed.
+ */
+
 public class PlayerData {
     private final UUID uuid;
     private int level = 1;
@@ -12,11 +20,16 @@ public class PlayerData {
     private long lastJoin;
     private final Stats stats = new Stats();
     private final Map<Skill, Integer> skills = new EnumMap<>(Skill.class);
+    private final Map<ChallengeType, Double> challengeProgress = new EnumMap<>(ChallengeType.class);
+    private long lastChallengeReset = System.currentTimeMillis();
 
     public PlayerData(UUID uuid) {
         this.uuid = uuid;
         for (Skill skill : Skill.values()) {
             skills.put(skill, 0);
+        }
+        for (ChallengeType type : ChallengeType.values()) {
+            challengeProgress.put(type, 0.0);
         }
     }
 
@@ -86,5 +99,22 @@ public class PlayerData {
 
     public void addSkillPoints(int amount) {
         this.skillPoints += amount;
+    }
+
+    public Map<ChallengeType, Double> getChallengeProgress() {
+        return challengeProgress;
+    }
+
+    public void addChallengeProgress(ChallengeType type, double amount) {
+        challengeProgress.put(type, challengeProgress.getOrDefault(type, 0.0) + amount);
+    }
+
+    public long getLastChallengeReset() {
+        return lastChallengeReset;
+    }
+
+    public void setLastChallengeReset(long time) {
+        this.lastChallengeReset = time;
+        challengeProgress.replaceAll((t, v) -> 0.0);
     }
 }

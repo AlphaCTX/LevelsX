@@ -2,6 +2,7 @@ players: {}
 moneyReward: 100.0
 itemReward: DIAMOND
 itemRewards: {}
+levelCap: 100
 challengeGoals:
   MOB_KILLS: 10
   DAMAGE_TAKEN: 500

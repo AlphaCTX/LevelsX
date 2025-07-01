@@ -9,6 +9,9 @@ minecraft spigot plugin gaan maken voor versie 1.16 tot 1.21 met de volgende fun
 - Stats bijhouden van speler (time online, kills, mob kills, deaths, damage dealt, money earned, money spend, kilometers traveled)
 - instelbaar middels admin GUI
 -  speler GUI voor inzien van stats, levels & rewards. Ook voor spenderen van skillpoints op skills
+- Scoreboard om level en XP progressie te tonen (aan/uit te zetten met /skill scoreboard)
+- Integratie met Vault voor het uitkeren van geldbeloningen
+- Admin GUI laat het selecteren van item rewards per 20 levels toe en het instellen van een level cap
 - Skills: damage reduction, healing, lifesteal, damage, lung capacity, 
 
 voor commands:

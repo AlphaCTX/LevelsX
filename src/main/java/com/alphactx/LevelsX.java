@@ -24,6 +24,8 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import net.milkbowl.vault.economy.Economy;
+import org.bukkit.ChatColor;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Score;
@@ -33,6 +35,7 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.plugin.RegisteredServiceProvider;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -41,6 +44,9 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     private final Map<UUID, PlayerData> players = new HashMap<>();
     private final Map<ChallengeType, Double> challengeGoals = new EnumMap<>(ChallengeType.class);
     private ScoreboardManager scoreboardManager;
+    private Economy economy;
+    private final Map<UUID, Integer> pendingRewardLevel = new HashMap<>();
+    private int levelCap;
 
     private void initChallenges() {
         FileConfiguration cfg = getConfig();
@@ -69,6 +75,12 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     public void onEnable() {
         saveDefaultConfig();
         scoreboardManager = Bukkit.getScoreboardManager();
+        levelCap = getConfig().getInt("levelCap", 100);
+        if (!setupEconomy()) {
+            getLogger().severe("Vault dependency not found");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         initChallenges();
         loadData();
         Bukkit.getPluginManager().registerEvents(this, this);
@@ -202,14 +214,21 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             }
         } else if (title.equals("Admin")) {
             event.setCancelled(true);
-            if (event.getRawSlot() >= 0 && event.getRawSlot() < 5) {
-                ItemStack cursor = event.getCursor();
-                if (cursor != null && cursor.getType() != Material.AIR) {
-                    int level = (event.getRawSlot() + 1) * 20;
-                    getConfig().set("itemRewards." + level, cursor.getType().name());
+            if (pendingRewardLevel.containsKey(player.getUniqueId()) && event.getClickedInventory() == player.getInventory()) {
+                ItemStack current = event.getCurrentItem();
+                if (current != null && current.getType() != Material.AIR) {
+                    int lvl = pendingRewardLevel.remove(player.getUniqueId());
+                    getConfig().set("itemRewards." + lvl, current.getType().name());
                     saveConfig();
+                    msg(player, "Set reward for level " + lvl + " to " + current.getType());
+                    openAdminGui(player);
                 }
-                openAdminGui(player);
+                return;
+            }
+            if (event.getRawSlot() >= 0 && event.getRawSlot() < 5) {
+                int level = (event.getRawSlot() + 1) * 20;
+                pendingRewardLevel.put(player.getUniqueId(), level);
+                msg(player, "Click an item in your inventory to set reward for level " + level);
             } else if (event.getRawSlot() == 7) {
                 double money = getConfig().getDouble("moneyReward", 100.0);
                 if (event.isLeftClick()) {
@@ -218,6 +237,15 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                     money += 10;
                 }
                 getConfig().set("moneyReward", Math.max(0, money));
+                saveConfig();
+                openAdminGui(player);
+            } else if (event.getRawSlot() == 6) {
+                if (event.isLeftClick()) {
+                    levelCap = Math.max(1, levelCap - 10);
+                } else if (event.isRightClick()) {
+                    levelCap += 10;
+                }
+                getConfig().set("levelCap", levelCap);
                 saveConfig();
                 openAdminGui(player);
             } else if (event.getRawSlot() == 8) {
@@ -239,8 +267,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     private void awardXp(Player player, int amount) {
         PlayerData data = getData(player.getUniqueId());
         data.addXp(amount);
-        if (data.tryLevelUp()) {
-            player.sendMessage("Leveled up to " + data.getLevel());
+        if (data.getLevel() < levelCap && data.tryLevelUp()) {
+            msg(player, "Leveled up to " + data.getLevel());
             if (data.getLevel() % 20 == 0) {
                 String matName = getConfig().getString("itemRewards." + data.getLevel(), getConfig().getString("itemReward", "DIAMOND"));
                 Material mat = Material.matchMaterial(matName);
@@ -249,11 +277,15 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 }
             } else if (data.getLevel() % 5 != 0) {
                 double money = getConfig().getDouble("moneyReward", 100.0);
-                player.sendMessage("You earned $" + money);
+                economy.depositPlayer(player, money);
+                msg(player, "You earned $" + money);
                 data.getStats().addMoneyEarned(money);
                 data.addChallengeProgress(ChallengeType.MONEY_EARNED, money);
                 checkChallenge(player, data, ChallengeType.MONEY_EARNED);
             }
+        } else if (data.getLevel() >= levelCap) {
+            int needed = data.getLevel() * 100;
+            data.setXp(Math.min(data.getXp(), needed));
         }
         updateScoreboard(player);
     }
@@ -303,6 +335,12 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             it.setItemMeta(im);
             inv.setItem(i, it);
         }
+
+        ItemStack cap = new ItemStack(Material.EXPERIENCE_BOTTLE);
+        ItemMeta cm = cap.getItemMeta();
+        cm.setDisplayName("Level Cap: " + levelCap);
+        cap.setItemMeta(cm);
+        inv.setItem(6, cap);
 
         ItemStack item = new ItemStack(Material.GOLD_INGOT);
         ItemMeta meta = item.getItemMeta();
@@ -365,11 +403,11 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 .sorted((a, b) -> compareStat(b.getValue().getStats(), a.getValue().getStats(), stat))
                 .limit(10)
                 .collect(Collectors.toList());
-        player.sendMessage("Leaderboard for " + stat + ":");
+        msg(player, "Leaderboard for " + stat + ":");
         int i = 1;
         for (Map.Entry<UUID, PlayerData> e : sorted) {
             String name = Optional.ofNullable(Bukkit.getOfflinePlayer(e.getKey()).getName()).orElse("Unknown");
-            player.sendMessage(i + ". " + name + " - " + getStatValue(e.getValue().getStats(), stat));
+            msg(player, i + ". " + name + " - " + getStatValue(e.getValue().getStats(), stat));
             i++;
         }
     }
@@ -378,7 +416,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         double progress = data.getChallengeProgress().get(type);
         double goal = challengeGoals.getOrDefault(type, Double.MAX_VALUE);
         if (progress >= goal) {
-            player.sendMessage("Challenge completed: " + type.name().toLowerCase());
+            msg(player, "Challenge completed: " + type.name().toLowerCase());
             awardXp(player, 20);
             data.getChallengeProgress().put(type, goal);
         }
@@ -408,7 +446,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            sender.sendMessage("Only players may use this command.");
+            msg(sender, "Only players may use this command.");
             return true;
         }
         Player player = (Player) sender;
@@ -417,18 +455,18 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             return true;
         }
         if (args[0].equalsIgnoreCase("help")) {
-            player.sendMessage("/skill - open GUI");
-            player.sendMessage("/skill admin - admin GUI");
-            player.sendMessage("/skill leaderboard <stat>");
-            player.sendMessage("/skill stats");
-            player.sendMessage("/skill challenges");
-            player.sendMessage("/skill spend <amount>");
-            player.sendMessage("/skill scoreboard");
+            msg(player, "/skill - open GUI");
+            msg(player, "/skill admin - admin GUI");
+            msg(player, "/skill leaderboard <stat>");
+            msg(player, "/skill stats");
+            msg(player, "/skill challenges");
+            msg(player, "/skill spend <amount>");
+            msg(player, "/skill scoreboard");
             return true;
         }
         if (args[0].equalsIgnoreCase("admin")) {
             if (!player.hasPermission("skill.admin")) {
-                player.sendMessage("No permission");
+                msg(player, "No permission");
                 return true;
             }
             openAdminGui(player);
@@ -458,17 +496,18 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 data.getStats().addMoneySpent(amount);
                 data.addChallengeProgress(ChallengeType.MONEY_SPENT, amount);
                 checkChallenge(player, data, ChallengeType.MONEY_SPENT);
-                player.sendMessage("You spent $" + amount);
+                economy.withdrawPlayer(player, amount);
+                msg(player, "You spent $" + amount);
                 int xp = (int) (amount / 100);
                 if (xp > 0) {
                     awardXp(player, xp);
                 }
             } catch (NumberFormatException e) {
-                player.sendMessage("Invalid amount");
+                msg(player, "Invalid amount");
             }
             return true;
         }
-        player.sendMessage("Use /skill help for commands");
+        msg(player, "Use /skill help for commands");
         return true;
     }
 
@@ -549,9 +588,22 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         return item;
     }
 
+    private void msg(CommandSender target, String message) {
+        target.sendMessage(ChatColor.GOLD + "[LevelsX] " + ChatColor.RESET + message);
+    }
+
     private void updateLungCapacity(Player player, PlayerData data) {
         int level = data.getSkillLevel(Skill.LUNG_CAPACITY);
         player.setMaximumAir(300 + level * 20);
+    }
+
+    private String createBar(double progress) {
+        int filled = (int) Math.round(progress * 10);
+        StringBuilder bar = new StringBuilder();
+        for (int i = 0; i < 10; i++) {
+            bar.append(i < filled ? ChatColor.GREEN : ChatColor.DARK_GRAY).append("|");
+        }
+        return bar.toString();
     }
 
     private void updateScoreboard(Player player) {
@@ -560,12 +612,16 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             return;
         }
         Scoreboard board = scoreboardManager.getNewScoreboard();
-        Objective obj = board.registerNewObjective("levelsx", "dummy", "LevelsX");
+        Objective obj = board.registerNewObjective("levelsx", "dummy", ChatColor.GREEN + "LevelsX");
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
         int needed = data.getLevel() * 100;
-        obj.getScore("Level: " + data.getLevel()).setScore(3);
-        obj.getScore("XP: " + data.getXp() + "/" + needed).setScore(2);
-        obj.getScore("To next: " + (needed - data.getXp())).setScore(1);
+        obj.getScore(ChatColor.YELLOW + "Level: " + ChatColor.WHITE + data.getLevel()).setScore(4);
+        if (data.getLevel() >= levelCap) {
+            obj.getScore(ChatColor.AQUA + "MAX LEVEL").setScore(3);
+        } else {
+            obj.getScore(ChatColor.YELLOW + "XP: " + ChatColor.WHITE + data.getXp() + "/" + needed).setScore(3);
+            obj.getScore(createBar((double) data.getXp() / needed)).setScore(2);
+        }
         player.setScoreboard(board);
     }
 
@@ -574,11 +630,23 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         data.setScoreboardEnabled(!data.isScoreboardEnabled());
         if (data.isScoreboardEnabled()) {
             updateScoreboard(player);
-            player.sendMessage("Scoreboard enabled");
+            msg(player, "Scoreboard enabled");
         } else {
             player.setScoreboard(scoreboardManager.getNewScoreboard());
-            player.sendMessage("Scoreboard disabled");
+            msg(player, "Scoreboard disabled");
         }
+    }
+
+    private boolean setupEconomy() {
+        if (getServer().getPluginManager().getPlugin("Vault") == null) {
+            return false;
+        }
+        RegisteredServiceProvider<Economy> rsp = getServer().getServicesManager().getRegistration(Economy.class);
+        if (rsp == null) {
+            return false;
+        }
+        economy = rsp.getProvider();
+        return economy != null;
     }
 
     @Override

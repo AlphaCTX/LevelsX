@@ -22,6 +22,7 @@ public class PlayerData {
     private final Map<Skill, Integer> skills = new EnumMap<>(Skill.class);
     private final Map<ChallengeType, Double> challengeProgress = new EnumMap<>(ChallengeType.class);
     private long lastChallengeReset = System.currentTimeMillis();
+    private boolean scoreboardEnabled = false;
 
     public PlayerData(UUID uuid) {
         this.uuid = uuid;
@@ -135,5 +136,13 @@ public class PlayerData {
      */
     public void loadLastChallengeReset(long time) {
         this.lastChallengeReset = time;
+    }
+
+    public boolean isScoreboardEnabled() {
+        return scoreboardEnabled;
+    }
+
+    public void setScoreboardEnabled(boolean enabled) {
+        this.scoreboardEnabled = enabled;
     }
 }

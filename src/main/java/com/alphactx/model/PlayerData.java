@@ -73,6 +73,18 @@ public class PlayerData {
         return skills.getOrDefault(skill, 0);
     }
 
+    /** Set the level of a specific skill directly. */
+    public void setSkillLevel(Skill skill, int level) {
+        skills.put(skill, level);
+    }
+
+    /**
+     * @return immutable view of skill levels
+     */
+    public Map<Skill, Integer> getSkills() {
+        return new EnumMap<>(skills);
+    }
+
     public void levelSkill(Skill skill) {
         if (skillPoints > 0) {
             skills.put(skill, getSkillLevel(skill) + 1);
@@ -116,5 +128,12 @@ public class PlayerData {
     public void setLastChallengeReset(long time) {
         this.lastChallengeReset = time;
         challengeProgress.replaceAll((t, v) -> 0.0);
+    }
+
+    /**
+     * Load the timestamp for the last challenge reset without clearing progress.
+     */
+    public void loadLastChallengeReset(long time) {
+        this.lastChallengeReset = time;
     }
 }

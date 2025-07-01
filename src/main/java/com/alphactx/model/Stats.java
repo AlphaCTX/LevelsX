@@ -19,6 +19,10 @@ public class Stats {
         this.timeOnline += ms;
     }
 
+    public void setTimeOnline(long ms) {
+        this.timeOnline = ms;
+    }
+
     public int getKills() {
         return kills;
     }

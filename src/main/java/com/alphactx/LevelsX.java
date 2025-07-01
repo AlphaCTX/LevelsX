@@ -23,6 +23,8 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.configuration.file.FileConfiguration;
 
@@ -82,6 +84,7 @@ public class LevelsX extends JavaPlugin implements Listener {
         if (now - data.getLastChallengeReset() > 86400000L) {
             data.setLastChallengeReset(now);
         }
+        updateLungCapacity(event.getPlayer(), data);
     }
 
     @EventHandler
@@ -103,6 +106,11 @@ public class LevelsX extends JavaPlugin implements Listener {
                 data.addChallengeProgress(ChallengeType.MOB_KILLS, 1);
                 checkChallenge(killer, data, ChallengeType.MOB_KILLS);
             }
+            int healLvl = data.getSkillLevel(Skill.HEALING);
+            if (healLvl > 0) {
+                double amount = healLvl * 2.0;
+                killer.setHealth(Math.min(killer.getMaxHealth(), killer.getHealth() + amount));
+            }
             awardXp(killer, 10);
         }
     }
@@ -119,11 +127,24 @@ public class LevelsX extends JavaPlugin implements Listener {
             Player player = (Player) event.getDamager();
             PlayerData data = getData(player.getUniqueId());
             data.getStats().addDamageDealt(event.getDamage());
+            int dmgLvl = data.getSkillLevel(Skill.DAMAGE);
+            if (dmgLvl > 0) {
+                event.setDamage(event.getDamage() * (1 + 0.05 * dmgLvl));
+            }
+            int steal = data.getSkillLevel(Skill.LIFESTEAL);
+            if (steal > 0) {
+                double heal = event.getDamage() * 0.05 * steal;
+                player.setHealth(Math.min(player.getMaxHealth(), player.getHealth() + heal));
+            }
         }
         if (event.getEntity() instanceof Player) {
             Player player = (Player) event.getEntity();
             PlayerData data = getData(player.getUniqueId());
             data.getStats().addDamageTaken(event.getDamage());
+            int reduce = data.getSkillLevel(Skill.DAMAGE_REDUCTION);
+            if (reduce > 0) {
+                event.setDamage(event.getDamage() * (1 - 0.05 * reduce));
+            }
             data.addChallengeProgress(ChallengeType.DAMAGE_TAKEN, event.getDamage());
             checkChallenge(player, data, ChallengeType.DAMAGE_TAKEN);
         }
@@ -155,7 +176,10 @@ public class LevelsX extends JavaPlugin implements Listener {
                 Skill skill = Skill.values()[slot];
                 PlayerData data = getData(player.getUniqueId());
                 data.levelSkill(skill);
+                updateLungCapacity(player, data);
                 openSkillGui(player);
+            } else if (slot == 7) {
+                openStatsGui(player);
             }
         } else if (title.equals("Admin")) {
             event.setCancelled(true);
@@ -169,7 +193,16 @@ public class LevelsX extends JavaPlugin implements Listener {
                 getConfig().set("moneyReward", Math.max(0, money));
                 saveConfig();
                 openAdminGui(player);
+            } else if (event.getRawSlot() == 5) {
+                ItemStack hand = player.getInventory().getItemInMainHand();
+                if (hand != null && hand.getType() != Material.AIR) {
+                    getConfig().set("itemReward", hand.getType().name());
+                    saveConfig();
+                }
+                openAdminGui(player);
             }
+        } else if (title.equals("Stats")) {
+            event.setCancelled(true);
         }
     }
 
@@ -179,7 +212,8 @@ public class LevelsX extends JavaPlugin implements Listener {
         if (data.tryLevelUp()) {
             player.sendMessage("Leveled up to " + data.getLevel());
             if (data.getLevel() % 20 == 0) {
-                ItemStack reward = new ItemStack(Material.DIAMOND);
+                Material mat = Material.valueOf(getConfig().getString("itemReward", "DIAMOND"));
+                ItemStack reward = new ItemStack(mat);
                 player.getInventory().addItem(reward);
             } else if (data.getLevel() % 5 != 0) {
                 double money = getConfig().getDouble("moneyReward", 100.0);
@@ -202,6 +236,18 @@ public class LevelsX extends JavaPlugin implements Listener {
             item.setItemMeta(meta);
             inv.setItem(slot++, item);
         }
+        ItemStack stats = new ItemStack(Material.PAPER);
+        ItemMeta sm = stats.getItemMeta();
+        sm.setDisplayName("View Stats");
+        stats.setItemMeta(sm);
+        inv.setItem(7, stats);
+
+        ItemStack points = new ItemStack(Material.EXPERIENCE_BOTTLE);
+        ItemMeta pm = points.getItemMeta();
+        pm.setDisplayName("Skill Points: " + data.getSkillPoints());
+        points.setItemMeta(pm);
+        inv.setItem(8, points);
+
         player.openInventory(inv);
     }
 
@@ -212,6 +258,32 @@ public class LevelsX extends JavaPlugin implements Listener {
         meta.setDisplayName("Money reward: $" + getConfig().getDouble("moneyReward", 100.0));
         item.setItemMeta(meta);
         inv.setItem(4, item);
+
+        ItemStack itemReward = new ItemStack(Material.valueOf(getConfig().getString("itemReward", "DIAMOND")));
+        ItemMeta im = itemReward.getItemMeta();
+        im.setDisplayName("Item reward (click with item in hand)");
+        itemReward.setItemMeta(im);
+        inv.setItem(5, itemReward);
+
+        player.openInventory(inv);
+    }
+
+    private void openStatsGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 27, "Stats");
+        PlayerData data = getData(player.getUniqueId());
+        Stats stats = data.getStats();
+        inv.setItem(0, createItem(Material.EXPERIENCE_BOTTLE, "Level " + data.getLevel(),
+                "XP: " + data.getXp(),
+                "Skill points: " + data.getSkillPoints()));
+        inv.setItem(1, createItem(Material.IRON_SWORD, "Kills", String.valueOf(stats.getKills())));
+        inv.setItem(2, createItem(Material.ZOMBIE_HEAD, "Mob Kills", String.valueOf(stats.getMobKills())));
+        inv.setItem(3, createItem(Material.SKELETON_SKULL, "Deaths", String.valueOf(stats.getDeaths())));
+        inv.setItem(4, createItem(Material.DIAMOND_SWORD, "Damage Dealt", String.format("%.1f", stats.getDamageDealt())));
+        inv.setItem(5, createItem(Material.SHIELD, "Damage Taken", String.format("%.1f", stats.getDamageTaken())));
+        inv.setItem(6, createItem(Material.EMERALD, "Money Earned", String.format("%.2f", stats.getMoneyEarned())));
+        inv.setItem(7, createItem(Material.GOLD_INGOT, "Money Spent", String.format("%.2f", stats.getMoneySpent())));
+        inv.setItem(8, createItem(Material.COMPASS, "Kilometers Traveled", String.format("%.2f", stats.getKilometersTraveled())));
+        inv.setItem(9, createItem(Material.CLOCK, "Time Online", String.format("%.1f h", stats.getTimeOnline() / 3600000.0)));
         player.openInventory(inv);
     }
 
@@ -284,6 +356,10 @@ public class LevelsX extends JavaPlugin implements Listener {
             showLeaderboard(player, stat);
             return true;
         }
+        if (args[0].equalsIgnoreCase("stats")) {
+            openStatsGui(player);
+            return true;
+        }
         if (args[0].equalsIgnoreCase("challenges")) {
             PlayerData data = getData(player.getUniqueId());
             player.sendMessage("Daily challenges:");
@@ -307,7 +383,7 @@ public class LevelsX extends JavaPlugin implements Listener {
             }
             return true;
         }
-        player.sendMessage("/skill, /skill admin, /skill leaderboard <stat>, /skill challenges, /skill spend <amount>");
+        player.sendMessage("/skill, /skill admin, /skill leaderboard <stat>, /skill stats, /skill challenges, /skill spend <amount>");
         return true;
     }
 
@@ -320,6 +396,12 @@ public class LevelsX extends JavaPlugin implements Listener {
                 data.setLevel(cfg.getInt("players." + key + ".level", 1));
                 data.setXp(cfg.getInt("players." + key + ".xp", 0));
                 data.addSkillPoints(cfg.getInt("players." + key + ".skillPoints", 0));
+                if (cfg.isConfigurationSection("players." + key + ".skills")) {
+                    for (String s : cfg.getConfigurationSection("players." + key + ".skills").getKeys(false)) {
+                        Skill skill = Skill.valueOf(s);
+                        data.setSkillLevel(skill, cfg.getInt("players." + key + ".skills." + s, 0));
+                    }
+                }
                 Stats stats = data.getStats();
                 stats.addKill(cfg.getInt("players." + key + ".stats.kills", 0));
                 stats.addMobKill(cfg.getInt("players." + key + ".stats.mobKills", 0));
@@ -329,6 +411,8 @@ public class LevelsX extends JavaPlugin implements Listener {
                 stats.addMoneyEarned(cfg.getDouble("players." + key + ".stats.moneyEarned", 0));
                 stats.addMoneySpent(cfg.getDouble("players." + key + ".stats.moneySpent", 0));
                 stats.addKilometersTraveled(cfg.getDouble("players." + key + ".stats.km", 0));
+                stats.setTimeOnline(cfg.getLong("players." + key + ".stats.time", 0));
+                data.loadLastChallengeReset(cfg.getLong("players." + key + ".lastChallengeReset", System.currentTimeMillis()));
                 if (cfg.isConfigurationSection("players." + key + ".challenges")) {
                     for (String t : cfg.getConfigurationSection("players." + key + ".challenges").getKeys(false)) {
                         ChallengeType type = ChallengeType.valueOf(t);
@@ -357,10 +441,31 @@ public class LevelsX extends JavaPlugin implements Listener {
             cfg.set("players." + id + ".stats.moneyEarned", stats.getMoneyEarned());
             cfg.set("players." + id + ".stats.moneySpent", stats.getMoneySpent());
             cfg.set("players." + id + ".stats.km", stats.getKilometersTraveled());
+            cfg.set("players." + id + ".stats.time", stats.getTimeOnline());
+            cfg.set("players." + id + ".lastChallengeReset", data.getLastChallengeReset());
+            for (Skill s : Skill.values()) {
+                cfg.set("players." + id + ".skills." + s.name(), data.getSkillLevel(s));
+            }
             for (Map.Entry<ChallengeType, Double> e : data.getChallengeProgress().entrySet()) {
                 cfg.set("players." + id + ".challenges." + e.getKey().name(), e.getValue());
             }
         }
         saveConfig();
+    }
+
+    private ItemStack createItem(Material mat, String name, String... lore) {
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(name);
+        if (lore.length > 0) {
+            meta.setLore(Arrays.asList(lore));
+        }
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private void updateLungCapacity(Player player, PlayerData data) {
+        int level = data.getSkillLevel(Skill.LUNG_CAPACITY);
+        player.setMaximumAir(300 + level * 20);
     }
 }

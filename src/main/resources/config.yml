@@ -1,5 +1,6 @@
 players: {}
 moneyReward: 100.0
+itemReward: DIAMOND
 challengeGoals:
   MOB_KILLS: 10
   DAMAGE_TAKEN: 500

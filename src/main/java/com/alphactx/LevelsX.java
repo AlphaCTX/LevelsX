@@ -104,7 +104,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     public void onEnable() {
         saveDefaultConfig();
         scoreboardManager = Bukkit.getScoreboardManager();
-        levelCap = getConfig().getInt("levelCap", 100);
+        levelCap = Math.min(1000, Math.max(1, getConfig().getInt("levelCap", 100)));
         setupStorage();
         if (!setupEconomy()) {
             getLogger().severe("Vault dependency not found");
@@ -186,12 +186,19 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             Player killer = event.getEntity().getKiller();
             PlayerData data = getData(killer.getUniqueId());
             int xp = 0;
+            double money = 0.0;
             if (event.getEntityType() == EntityType.PLAYER) {
                 data.getStats().addKill();
-                xp = 25;
+                if (getConfig().getBoolean("killRewards.players.enabled", true)) {
+                    xp = getConfig().getInt("killRewards.players.xp", 25);
+                    money = getConfig().getDouble("killRewards.players.money", 0.0);
+                }
             } else {
                 data.getStats().addMobKill();
-                xp = 10;
+                if (getConfig().getBoolean("killRewards.mobs.enabled", true)) {
+                    xp = getConfig().getInt("killRewards.mobs.xp", 10);
+                    money = getConfig().getDouble("killRewards.mobs.money", 0.0);
+                }
                 addProgress(killer, data, ChallengeType.MOB_KILLS, 1);
             }
             int healLvl = data.getSkillLevel(Skill.HEALING);
@@ -199,7 +206,15 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 double amount = healLvl * 2.0;
                 killer.setHealth(Math.min(killer.getMaxHealth(), killer.getHealth() + amount));
             }
-            awardXp(killer, xp);
+            if (xp > 0) {
+                awardXp(killer, xp);
+            }
+            if (money > 0) {
+                economy.depositPlayer(killer, money);
+                msg(killer, "You earned $" + money);
+                data.getStats().addMoneyEarned(money);
+                data.setLastBalance(economy.getBalance(killer));
+            }
         }
     }
 
@@ -276,9 +291,14 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         } else if (title.equals("Admin")) {
             event.setCancelled(true);
             int rewardSlots = levelCap / 20;
-            int capSlot = event.getInventory().getSize() - 3;
+            int extra = 6;
+            int capSlot = event.getInventory().getSize() - (extra + 1);
             int moneySlot = capSlot + 1;
-            int backSlot = capSlot + 2;
+            int dailySlot = capSlot + 2;
+            int weeklySlot = capSlot + 3;
+            int mobSlot = capSlot + 4;
+            int playerSlot = capSlot + 5;
+            int backSlot = capSlot + 6;
             if (pendingRewardLevel.containsKey(player.getUniqueId()) && event.getClickedInventory() == player.getInventory()) {
                 ItemStack current = event.getCurrentItem();
                 if (current != null && current.getType() != Material.AIR) {
@@ -297,20 +317,76 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             } else if (event.getRawSlot() == moneySlot) {
                 double money = getConfig().getDouble("moneyReward", 100.0);
                 if (event.isLeftClick()) {
-                    money -= 10;
+                    money = Math.max(0, money - 10);
                 } else if (event.isRightClick()) {
                     money += 10;
                 }
-                getConfig().set("moneyReward", Math.max(0, money));
+                getConfig().set("moneyReward", money);
                 saveConfig();
                 openAdminGui(player);
             } else if (event.getRawSlot() == capSlot) {
                 if (event.isLeftClick()) {
                     levelCap = Math.max(1, levelCap - 10);
                 } else if (event.isRightClick()) {
-                    levelCap += 10;
+                    levelCap = Math.min(1000, levelCap + 10);
                 }
                 getConfig().set("levelCap", levelCap);
+                saveConfig();
+                openAdminGui(player);
+            } else if (event.getRawSlot() == dailySlot) {
+                int xp = getConfig().getInt("challengeRewards.daily.xp", 20);
+                double money = getConfig().getDouble("challengeRewards.daily.money", 0.0);
+                if (event.isLeftClick()) {
+                    xp = Math.max(0, xp + (event.isShiftClick() ? -10 : 10));
+                    getConfig().set("challengeRewards.daily.xp", xp);
+                } else if (event.isRightClick()) {
+                    money = Math.max(0, money + (event.isShiftClick() ? -10 : 10));
+                    getConfig().set("challengeRewards.daily.money", money);
+                }
+                saveConfig();
+                openAdminGui(player);
+            } else if (event.getRawSlot() == weeklySlot) {
+                int xp = getConfig().getInt("challengeRewards.weekly.xp", 50);
+                double money = getConfig().getDouble("challengeRewards.weekly.money", 0.0);
+                if (event.isLeftClick()) {
+                    xp = Math.max(0, xp + (event.isShiftClick() ? -10 : 10));
+                    getConfig().set("challengeRewards.weekly.xp", xp);
+                } else if (event.isRightClick()) {
+                    money = Math.max(0, money + (event.isShiftClick() ? -10 : 10));
+                    getConfig().set("challengeRewards.weekly.money", money);
+                }
+                saveConfig();
+                openAdminGui(player);
+            } else if (event.getRawSlot() == mobSlot) {
+                boolean enabled = getConfig().getBoolean("killRewards.mobs.enabled", true);
+                int xp = getConfig().getInt("killRewards.mobs.xp", 10);
+                double money = getConfig().getDouble("killRewards.mobs.money", 0.0);
+                if (event.isMiddleClick()) {
+                    enabled = !enabled;
+                    getConfig().set("killRewards.mobs.enabled", enabled);
+                } else if (event.isLeftClick()) {
+                    xp = Math.max(0, xp + (event.isShiftClick() ? -1 : 1));
+                    getConfig().set("killRewards.mobs.xp", xp);
+                } else if (event.isRightClick()) {
+                    money = Math.max(0, money + (event.isShiftClick() ? -1 : 1));
+                    getConfig().set("killRewards.mobs.money", money);
+                }
+                saveConfig();
+                openAdminGui(player);
+            } else if (event.getRawSlot() == playerSlot) {
+                boolean enabled = getConfig().getBoolean("killRewards.players.enabled", true);
+                int xp = getConfig().getInt("killRewards.players.xp", 25);
+                double money = getConfig().getDouble("killRewards.players.money", 0.0);
+                if (event.isMiddleClick()) {
+                    enabled = !enabled;
+                    getConfig().set("killRewards.players.enabled", enabled);
+                } else if (event.isLeftClick()) {
+                    xp = Math.max(0, xp + (event.isShiftClick() ? -1 : 1));
+                    getConfig().set("killRewards.players.xp", xp);
+                } else if (event.isRightClick()) {
+                    money = Math.max(0, money + (event.isShiftClick() ? -1 : 1));
+                    getConfig().set("killRewards.players.money", money);
+                }
                 saveConfig();
                 openAdminGui(player);
             } else if (event.getRawSlot() == backSlot) {
@@ -323,7 +399,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             }
         } else if (title.equals("Challenges")) {
             event.setCancelled(true);
-            if (event.getRawSlot() == 8) {
+            if (event.getRawSlot() == 17) {
                 openSkillGui(player);
             }
         }
@@ -334,6 +410,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         data.addXp(amount);
         if (data.getLevel() < levelCap && data.tryLevelUp()) {
             msg(player, "Leveled up to " + data.getLevel());
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
             if (data.getLevel() % 20 == 0) {
                 String matName = getConfig().getString("itemRewards." + data.getLevel(), getConfig().getString("itemReward", "DIAMOND"));
                 Material mat = Material.matchMaterial(matName);
@@ -389,7 +466,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
 
     private void openAdminGui(Player player) {
         int rewardSlots = levelCap / 20;
-        int total = rewardSlots + 3;
+        int extra = 6; // cap, money, daily, weekly, mob, player, back
+        int total = rewardSlots + extra + 1; // +1 for back
         int size = ((total + 8) / 9) * 9;
         Inventory inv = Bukkit.createInventory(player, size, "Admin");
         for (int i = 0; i < rewardSlots; i++) {
@@ -404,7 +482,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             inv.setItem(i, it);
         }
 
-        int capSlot = size - 3;
+        int capSlot = size - (extra + 1);
         ItemStack cap = new ItemStack(Material.EXPERIENCE_BOTTLE);
         ItemMeta cm = cap.getItemMeta();
         cm.setDisplayName("Level Cap: " + levelCap);
@@ -417,11 +495,41 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         item.setItemMeta(meta);
         inv.setItem(capSlot + 1, item);
 
+        ItemStack daily = new ItemStack(Material.PAPER);
+        ItemMeta dm = daily.getItemMeta();
+        dm.setDisplayName("Daily reward: " + getConfig().getInt("challengeRewards.daily.xp",20)
+                + " XP, $" + getConfig().getDouble("challengeRewards.daily.money",0.0));
+        daily.setItemMeta(dm);
+        inv.setItem(capSlot + 2, daily);
+
+        ItemStack weekly = new ItemStack(Material.MAP);
+        ItemMeta wm = weekly.getItemMeta();
+        wm.setDisplayName("Weekly reward: " + getConfig().getInt("challengeRewards.weekly.xp",50)
+                + " XP, $" + getConfig().getDouble("challengeRewards.weekly.money",0.0));
+        weekly.setItemMeta(wm);
+        inv.setItem(capSlot + 3, weekly);
+
+        ItemStack mob = new ItemStack(Material.ZOMBIE_HEAD);
+        ItemMeta mobm = mob.getItemMeta();
+        boolean mobsOn = getConfig().getBoolean("killRewards.mobs.enabled", true);
+        mobm.setDisplayName("Mob kill: " + (mobsOn ? "on" : "off") + " "
+                + getConfig().getInt("killRewards.mobs.xp",10) + " XP, $" + getConfig().getDouble("killRewards.mobs.money",0.0));
+        mob.setItemMeta(mobm);
+        inv.setItem(capSlot + 4, mob);
+
+        ItemStack playerItem = new ItemStack(Material.PLAYER_HEAD);
+        ItemMeta plm = playerItem.getItemMeta();
+        boolean playersOn = getConfig().getBoolean("killRewards.players.enabled", true);
+        plm.setDisplayName("Player kill: " + (playersOn ? "on" : "off") + " "
+                + getConfig().getInt("killRewards.players.xp",25) + " XP, $" + getConfig().getDouble("killRewards.players.money",0.0));
+        playerItem.setItemMeta(plm);
+        inv.setItem(capSlot + 5, playerItem);
+
         ItemStack back = new ItemStack(Material.ARROW);
         ItemMeta bm = back.getItemMeta();
         bm.setDisplayName("Back");
         back.setItemMeta(bm);
-        inv.setItem(capSlot + 2, back);
+        inv.setItem(capSlot + 6, back);
 
         player.openInventory(inv);
     }
@@ -492,7 +600,17 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         double goal = challengeGoals.getOrDefault(type, Double.MAX_VALUE);
         if (progress >= goal) {
             msg(player, (daily ? "Daily" : "Weekly") + " challenge completed: " + type.name().toLowerCase());
-            awardXp(player, daily ? 20 : 20);
+            int xp = getConfig().getInt(daily ? "challengeRewards.daily.xp" : "challengeRewards.weekly.xp", daily ? 20 : 50);
+            double money = getConfig().getDouble(daily ? "challengeRewards.daily.money" : "challengeRewards.weekly.money", 0.0);
+            if (xp > 0) {
+                awardXp(player, xp);
+            }
+            if (money > 0) {
+                economy.depositPlayer(player, money);
+                msg(player, "You earned $" + money);
+                data.getStats().addMoneyEarned(money);
+                data.setLastBalance(economy.getBalance(player));
+            }
             if (daily) {
                 data.getDailyProgress().put(type, goal);
             } else {
@@ -503,12 +621,24 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
 
     private void addProgress(Player player, PlayerData data, ChallengeType type, double amount) {
         if (activeDaily.contains(type)) {
-            data.addDailyProgress(type, amount);
-            checkChallenge(player, data, type, true);
+            double progress = data.getDailyProgress().get(type);
+            double goal = challengeGoals.get(type);
+            if (progress < goal) {
+                data.getDailyProgress().put(type, Math.min(goal, progress + amount));
+                if (progress + amount >= goal) {
+                    checkChallenge(player, data, type, true);
+                }
+            }
         }
         if (activeWeekly.contains(type)) {
-            data.addWeeklyProgress(type, amount);
-            checkChallenge(player, data, type, false);
+            double progress = data.getWeeklyProgress().get(type);
+            double goal = challengeGoals.get(type);
+            if (progress < goal) {
+                data.getWeeklyProgress().put(type, Math.min(goal, progress + amount));
+                if (progress + amount >= goal) {
+                    checkChallenge(player, data, type, false);
+                }
+            }
         }
     }
 

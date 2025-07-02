@@ -1,0 +1,9 @@
+name: LevelsX
+main: com.alphactx.LevelsX
+version: 1.0
+api-version: 1.16
+depend: [Vault]
+commands:
+  skill:
+    description: Levels command
+    usage: /<command>

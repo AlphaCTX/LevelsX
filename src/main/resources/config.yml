@@ -26,13 +26,19 @@ levelCap: 100             # Maximum achievable level
 autosave: 5               # Minutes between automatic data saves
 
 # --- Challenge Goals ---
-# Goals players must reach for extra challenges
-challengeGoals:
-  MOB_KILLS: 10    # Number of mobs to kill
-  DAMAGE_TAKEN: 500   # Amount of damage to receive
-  MONEY_EARNED: 1000  # Amount of money to earn
-  MONEY_SPENT: 1000  # Amount of money to spend
-  KILOMETERS_TRAVELED: 5     # Distance to travel in kilometers
+# Separate goals for daily and weekly challenges
+dailyGoals:
+  MOB_KILLS: 10
+  DAMAGE_TAKEN: 500
+  MONEY_EARNED: 1000
+  MONEY_SPENT: 1000
+  KILOMETERS_TRAVELED: 5
+weeklyGoals:
+  MOB_KILLS: 50
+  DAMAGE_TAKEN: 2500
+  MONEY_EARNED: 5000
+  MONEY_SPENT: 5000
+  KILOMETERS_TRAVELED: 25
 
 # --- Challenge Rewards ---
 # Rewards granted when completing challenges

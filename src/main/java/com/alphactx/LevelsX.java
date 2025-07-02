@@ -52,7 +52,8 @@ import java.util.stream.Collectors;
 
 public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     private final Map<UUID, PlayerData> players = new HashMap<>();
-    private final Map<ChallengeType, Double> challengeGoals = new EnumMap<>(ChallengeType.class);
+    private final Map<ChallengeType, Double> dailyGoals = new EnumMap<>(ChallengeType.class);
+    private final Map<ChallengeType, Double> weeklyGoals = new EnumMap<>(ChallengeType.class);
     private final List<ChallengeType> activeDaily = new ArrayList<>();
     private final List<ChallengeType> activeWeekly = new ArrayList<>();
     private long lastDailySelect;
@@ -67,7 +68,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     private void initChallenges() {
         FileConfiguration cfg = getConfig();
         for (ChallengeType type : ChallengeType.values()) {
-            challengeGoals.put(type, cfg.getDouble("challengeGoals." + type.name(), getDefaultGoal(type)));
+            dailyGoals.put(type, cfg.getDouble("dailyGoals." + type.name(), getDefaultGoal(type)));
+            weeklyGoals.put(type, cfg.getDouble("weeklyGoals." + type.name(), getDefaultGoal(type) * 5));
         }
     }
 
@@ -286,6 +288,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             boolean picking = pendingRewardLevel.containsKey(player.getUniqueId());
             if (!picking || event.getClickedInventory() != player.getInventory() || event.isShiftClick()) {
                 event.setCancelled(true);
+            } else {
+                event.setCancelled(false);
             }
         } else {
             return;
@@ -488,10 +492,18 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             if (event.getRawSlot() == back) { openConfigGui(player); return; }
             int index = event.getRawSlot();
             if (index >=0 && index < data.getBoardOrder().size()) {
-                ScoreField f = data.getBoardOrder().get(index);
-                boolean en = data.isFieldEnabled(f);
-                data.setFieldEnabled(f, !en);
-                if (f == ScoreField.BALANCE) data.setShowBalance(!en);
+                if (event.isShiftClick()) {
+                    int dir = event.isLeftClick() ? -1 : 1;
+                    int target = index + dir;
+                    if (target >=0 && target < data.getBoardOrder().size()) {
+                        Collections.swap(data.getBoardOrder(), index, target);
+                    }
+                } else {
+                    ScoreField f = data.getBoardOrder().get(index);
+                    boolean en = data.isFieldEnabled(f);
+                    data.setFieldEnabled(f, !en);
+                    if (f == ScoreField.BALANCE) data.setShowBalance(!en);
+                }
                 openScoreboardGui(player);
                 updateScoreboard(player);
             }
@@ -524,8 +536,11 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 title.equals("Config") || title.equals("Menu") || title.equals("Scoreboard");
         if (custom) {
             boolean picking = pendingRewardLevel.containsKey(player.getUniqueId());
-            if (!picking || event.getRawSlots().stream().anyMatch(s -> s < event.getView().getTopInventory().getSize())) {
+            boolean top = event.getRawSlots().stream().anyMatch(s -> s < event.getView().getTopInventory().getSize());
+            if (!picking || top) {
                 event.setCancelled(true);
+            } else {
+                event.setCancelled(false);
             }
         }
     }
@@ -652,7 +667,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         int i = 0;
         for (ChallengeType type : activeDaily) {
             double prog = data.getDailyProgress().get(type);
-            double goal = challengeGoals.get(type);
+            double goal = dailyGoals.get(type);
             int xp = getConfig().getInt("challengeRewards.daily.types." + type.name() + ".xp", getConfig().getInt("challengeRewards.daily.xp", 20));
             double money = getConfig().getDouble("challengeRewards.daily.types." + type.name() + ".money", getConfig().getDouble("challengeRewards.daily.money", 0.0));
             inv.setItem(i++, createItem(Material.PAPER, type.name(), String.format("%.1f/%.1f", prog, goal), "Reward: " + xp + " XP, $" + money));
@@ -667,7 +682,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         int i = 0;
         for (ChallengeType type : activeWeekly) {
             double prog = data.getWeeklyProgress().get(type);
-            double goal = challengeGoals.get(type);
+            double goal = weeklyGoals.get(type);
             int xp = getConfig().getInt("challengeRewards.weekly.types." + type.name() + ".xp", getConfig().getInt("challengeRewards.weekly.xp", 50));
             double money = getConfig().getDouble("challengeRewards.weekly.types." + type.name() + ".money", getConfig().getDouble("challengeRewards.weekly.money", 0.0));
             inv.setItem(i++, createItem(Material.MAP, type.name(), String.format("%.1f/%.1f", prog, goal), "Reward: " + xp + " XP, $" + money));
@@ -709,7 +724,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         int slot = 0;
         for (ScoreField f : data.getBoardOrder()) {
             Material m = data.isFieldEnabled(f) ? Material.LIME_WOOL : Material.RED_WOOL;
-            inv.setItem(slot++, createItem(m, f.getLabel()));
+            inv.setItem(slot++, createItem(m, f.getLabel(), "Left: toggle", "Shift+Left/Right: move"));
         }
         inv.setItem(size-1, createItem(Material.ARROW, "Back"));
         player.openInventory(inv);
@@ -730,7 +745,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         inv.setItem(6, createItem(Material.EMERALD, "Money Earned", String.format("%.2f", stats.getMoneyEarned())));
         inv.setItem(7, createItem(Material.GOLD_INGOT, "Money Spent", String.format("%.2f", stats.getMoneySpent())));
         inv.setItem(8, createItem(Material.COMPASS, "Kilometers Traveled", String.format("%.2f", stats.getKilometersTraveled())));
-        inv.setItem(9, createItem(Material.CLOCK, "Time Online", String.format("%.1f h", stats.getTimeOnline() / 3600000.0)));
+        inv.setItem(9, createItem(Material.CLOCK, "Time Online", formatTime(stats.getTimeOnline())));
         inv.setItem(26, createItem(Material.ARROW, "Back"));
         player.openInventory(inv);
     }
@@ -752,7 +767,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
 
     private void checkChallenge(Player player, PlayerData data, ChallengeType type, boolean daily) {
         double prog = daily ? data.getDailyProgress().get(type) : data.getWeeklyProgress().get(type);
-        double goal = challengeGoals.getOrDefault(type, Double.MAX_VALUE);
+        double goal = daily ? dailyGoals.getOrDefault(type, Double.MAX_VALUE) : weeklyGoals.getOrDefault(type, Double.MAX_VALUE);
         if (prog >= goal) {
             msg(player, (daily ? "Daily" : "Weekly") + " challenge completed: " + type.name().toLowerCase());
             distributeChallengeReward(player, data, type, daily);
@@ -777,7 +792,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     private void addProgress(Player player, PlayerData data, ChallengeType type, double amount) {
         if (activeDaily.contains(type)) {
             double prog = data.getDailyProgress().get(type);
-            double goal = challengeGoals.get(type);
+            double goal = dailyGoals.get(type);
             if (prog < goal) {
                 double next = Math.min(goal, prog + amount);
                 data.getDailyProgress().put(type, next);
@@ -786,7 +801,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         }
         if (activeWeekly.contains(type)) {
             double prog = data.getWeeklyProgress().get(type);
-            double goal = challengeGoals.get(type);
+            double goal = weeklyGoals.get(type);
             if (prog < goal) {
                 double next = Math.min(goal, prog + amount);
                 data.getWeeklyProgress().put(type, next);
@@ -983,6 +998,14 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             bar.append(i<filled ? ChatColor.GREEN : ChatColor.DARK_GRAY).append("|");
         }
         return bar.toString();
+    }
+
+    private String formatTime(long ms) {
+        long totalMinutes = ms / 60000;
+        long days = totalMinutes / (60*24);
+        long hours = (totalMinutes % (60*24)) / 60;
+        long minutes = totalMinutes % 60;
+        return String.format("%02d:%02d:%02d", days, hours, minutes);
     }
 
     private String getSkillInfo(Skill skill, int lvl) {

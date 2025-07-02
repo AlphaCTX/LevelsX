@@ -20,8 +20,10 @@ public class PlayerData {
     private long lastJoin;
     private final Stats stats = new Stats();
     private final Map<Skill, Integer> skills = new EnumMap<>(Skill.class);
-    private final Map<ChallengeType, Double> challengeProgress = new EnumMap<>(ChallengeType.class);
-    private long lastChallengeReset = System.currentTimeMillis();
+    private final Map<ChallengeType, Double> dailyProgress = new EnumMap<>(ChallengeType.class);
+    private final Map<ChallengeType, Double> weeklyProgress = new EnumMap<>(ChallengeType.class);
+    private long lastDailyReset = System.currentTimeMillis();
+    private long lastWeeklyReset = System.currentTimeMillis();
     private boolean scoreboardEnabled = false;
     private double lastBalance = 0.0;
 
@@ -31,7 +33,8 @@ public class PlayerData {
             skills.put(skill, 0);
         }
         for (ChallengeType type : ChallengeType.values()) {
-            challengeProgress.put(type, 0.0);
+            dailyProgress.put(type, 0.0);
+            weeklyProgress.put(type, 0.0);
         }
     }
 
@@ -115,28 +118,46 @@ public class PlayerData {
         this.skillPoints += amount;
     }
 
-    public Map<ChallengeType, Double> getChallengeProgress() {
-        return challengeProgress;
+    public Map<ChallengeType, Double> getDailyProgress() {
+        return dailyProgress;
     }
 
-    public void addChallengeProgress(ChallengeType type, double amount) {
-        challengeProgress.put(type, challengeProgress.getOrDefault(type, 0.0) + amount);
+    public Map<ChallengeType, Double> getWeeklyProgress() {
+        return weeklyProgress;
     }
 
-    public long getLastChallengeReset() {
-        return lastChallengeReset;
+    public void addDailyProgress(ChallengeType type, double amount) {
+        dailyProgress.put(type, dailyProgress.getOrDefault(type, 0.0) + amount);
     }
 
-    public void setLastChallengeReset(long time) {
-        this.lastChallengeReset = time;
-        challengeProgress.replaceAll((t, v) -> 0.0);
+    public void addWeeklyProgress(ChallengeType type, double amount) {
+        weeklyProgress.put(type, weeklyProgress.getOrDefault(type, 0.0) + amount);
     }
 
-    /**
-     * Load the timestamp for the last challenge reset without clearing progress.
-     */
-    public void loadLastChallengeReset(long time) {
-        this.lastChallengeReset = time;
+    public long getLastDailyReset() {
+        return lastDailyReset;
+    }
+
+    public void setLastDailyReset(long time) {
+        this.lastDailyReset = time;
+        dailyProgress.replaceAll((t, v) -> 0.0);
+    }
+
+    public void loadLastDailyReset(long time) {
+        this.lastDailyReset = time;
+    }
+
+    public long getLastWeeklyReset() {
+        return lastWeeklyReset;
+    }
+
+    public void setLastWeeklyReset(long time) {
+        this.lastWeeklyReset = time;
+        weeklyProgress.replaceAll((t, v) -> 0.0);
+    }
+
+    public void loadLastWeeklyReset(long time) {
+        this.lastWeeklyReset = time;
     }
 
     public boolean isScoreboardEnabled() {

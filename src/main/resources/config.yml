@@ -32,3 +32,24 @@ challengeGoals:
   MONEY_EARNED: 1000  # Amount of money to earn
   MONEY_SPENT: 1000  # Amount of money to spend
   KILOMETERS_TRAVELED: 5     # Distance to travel in kilometers
+
+# --- Challenge Rewards ---
+# Rewards granted when completing challenges
+challengeRewards:
+  daily:
+    xp: 20
+    money: 0.0
+  weekly:
+    xp: 50
+    money: 0.0
+
+# --- Kill Rewards ---
+killRewards:
+  mobs:
+    enabled: true
+    xp: 10
+    money: 0.0
+  players:
+    enabled: true
+    xp: 25
+    money: 0.0

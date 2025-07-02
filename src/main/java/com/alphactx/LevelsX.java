@@ -49,6 +49,10 @@ import java.util.stream.Collectors;
 public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     private final Map<UUID, PlayerData> players = new HashMap<>();
     private final Map<ChallengeType, Double> challengeGoals = new EnumMap<>(ChallengeType.class);
+    private final List<ChallengeType> activeDaily = new ArrayList<>();
+    private final List<ChallengeType> activeWeekly = new ArrayList<>();
+    private long lastDailySelect;
+    private long lastWeeklySelect;
     private ScoreboardManager scoreboardManager;
     private Economy economy;
     private final Map<UUID, Integer> pendingRewardLevel = new HashMap<>();
@@ -78,11 +82,29 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         }
     }
 
+    private void selectDailyChallenges() {
+        activeDaily.clear();
+        List<ChallengeType> list = new ArrayList<>(Arrays.asList(ChallengeType.values()));
+        Collections.shuffle(list);
+        for (int i = 0; i < 3 && i < list.size(); i++) {
+            activeDaily.add(list.get(i));
+        }
+    }
+
+    private void selectWeeklyChallenges() {
+        activeWeekly.clear();
+        List<ChallengeType> list = new ArrayList<>(Arrays.asList(ChallengeType.values()));
+        Collections.shuffle(list);
+        for (int i = 0; i < 3 && i < list.size(); i++) {
+            activeWeekly.add(list.get(i));
+        }
+    }
+
     @Override
     public void onEnable() {
         saveDefaultConfig();
         scoreboardManager = Bukkit.getScoreboardManager();
-        levelCap = getConfig().getInt("levelCap", 100);
+        levelCap = Math.min(1000, Math.max(1, getConfig().getInt("levelCap", 100)));
         setupStorage();
         if (!setupEconomy()) {
             getLogger().severe("Vault dependency not found");
@@ -90,10 +112,15 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             return;
         }
         initChallenges();
+        selectDailyChallenges();
+        selectWeeklyChallenges();
+        lastDailySelect = System.currentTimeMillis();
+        lastWeeklySelect = lastDailySelect;
         loadData();
         Bukkit.getPluginManager().registerEvents(this, this);
         Objects.requireNonNull(getCommand("skill")).setTabCompleter(this);
         Bukkit.getScheduler().runTaskTimer(this, this::checkBalances, 20L, 20L);
+        Bukkit.getScheduler().runTaskTimer(this, this::checkChallengeResets, 72000L, 72000L);
         getLogger().info("LevelsX enabled");
     }
 
@@ -118,8 +145,11 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         data.setLastJoin(System.currentTimeMillis());
         data.setLastBalance(economy.getBalance(event.getPlayer()));
         long now = System.currentTimeMillis();
-        if (now - data.getLastChallengeReset() > 86400000L) {
-            data.setLastChallengeReset(now);
+        if (now - data.getLastDailyReset() > 86400000L) {
+            data.setLastDailyReset(now);
+        }
+        if (now - data.getLastWeeklyReset() > 604800000L) {
+            data.setLastWeeklyReset(now);
         }
         updateLungCapacity(event.getPlayer(), data);
         updateScoreboard(event.getPlayer());
@@ -135,13 +165,11 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         if (Math.abs(diff) > 0.01) {
             if (diff > 0) {
                 data.getStats().addMoneyEarned(diff);
-                data.addChallengeProgress(ChallengeType.MONEY_EARNED, diff);
-                checkChallenge(event.getPlayer(), data, ChallengeType.MONEY_EARNED);
+                addProgress(event.getPlayer(), data, ChallengeType.MONEY_EARNED, diff);
             } else {
                 diff = -diff;
                 data.getStats().addMoneySpent(diff);
-                data.addChallengeProgress(ChallengeType.MONEY_SPENT, diff);
-                checkChallenge(event.getPlayer(), data, ChallengeType.MONEY_SPENT);
+                addProgress(event.getPlayer(), data, ChallengeType.MONEY_SPENT, diff);
             }
         }
         data.setLastBalance(current);
@@ -158,21 +186,35 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             Player killer = event.getEntity().getKiller();
             PlayerData data = getData(killer.getUniqueId());
             int xp = 0;
+            double money = 0.0;
             if (event.getEntityType() == EntityType.PLAYER) {
                 data.getStats().addKill();
-                xp = 25;
+                if (getConfig().getBoolean("killRewards.players.enabled", true)) {
+                    xp = getConfig().getInt("killRewards.players.xp", 25);
+                    money = getConfig().getDouble("killRewards.players.money", 0.0);
+                }
             } else {
                 data.getStats().addMobKill();
-                xp = 10;
-                data.addChallengeProgress(ChallengeType.MOB_KILLS, 1);
-                checkChallenge(killer, data, ChallengeType.MOB_KILLS);
+                if (getConfig().getBoolean("killRewards.mobs.enabled", true)) {
+                    xp = getConfig().getInt("killRewards.mobs.xp", 10);
+                    money = getConfig().getDouble("killRewards.mobs.money", 0.0);
+                }
+                addProgress(killer, data, ChallengeType.MOB_KILLS, 1);
             }
             int healLvl = data.getSkillLevel(Skill.HEALING);
             if (healLvl > 0) {
                 double amount = healLvl * 2.0;
                 killer.setHealth(Math.min(killer.getMaxHealth(), killer.getHealth() + amount));
             }
-            awardXp(killer, xp);
+            if (xp > 0) {
+                awardXp(killer, xp);
+            }
+            if (money > 0) {
+                economy.depositPlayer(killer, money);
+                msg(killer, "You earned $" + money);
+                data.getStats().addMoneyEarned(money);
+                data.setLastBalance(economy.getBalance(killer));
+            }
         }
     }
 
@@ -206,8 +248,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             if (reduce > 0) {
                 event.setDamage(event.getDamage() * (1 - 0.05 * reduce));
             }
-            data.addChallengeProgress(ChallengeType.DAMAGE_TAKEN, event.getDamage());
-            checkChallenge(player, data, ChallengeType.DAMAGE_TAKEN);
+            addProgress(player, data, ChallengeType.DAMAGE_TAKEN, event.getDamage());
         }
     }
 
@@ -218,8 +259,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             PlayerData data = getData(event.getPlayer().getUniqueId());
             double km = distance / 1000.0;
             data.getStats().addKilometersTraveled(km);
-            data.addChallengeProgress(ChallengeType.KILOMETERS_TRAVELED, km);
-            checkChallenge(event.getPlayer(), data, ChallengeType.KILOMETERS_TRAVELED);
+            addProgress(event.getPlayer(), data, ChallengeType.KILOMETERS_TRAVELED, km);
             int xp = (int) Math.round(km * 5);
             if (xp > 0) {
                 awardXp(event.getPlayer(), xp);
@@ -250,6 +290,15 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             }
         } else if (title.equals("Admin")) {
             event.setCancelled(true);
+            int rewardSlots = levelCap / 20;
+            int extra = 6;
+            int capSlot = event.getInventory().getSize() - (extra + 1);
+            int moneySlot = capSlot + 1;
+            int dailySlot = capSlot + 2;
+            int weeklySlot = capSlot + 3;
+            int mobSlot = capSlot + 4;
+            int playerSlot = capSlot + 5;
+            int backSlot = capSlot + 6;
             if (pendingRewardLevel.containsKey(player.getUniqueId()) && event.getClickedInventory() == player.getInventory()) {
                 ItemStack current = event.getCurrentItem();
                 if (current != null && current.getType() != Material.AIR) {
@@ -261,30 +310,86 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 }
                 return;
             }
-            if (event.getRawSlot() >= 0 && event.getRawSlot() < 5) {
+            if (event.getRawSlot() >= 0 && event.getRawSlot() < rewardSlots) {
                 int level = (event.getRawSlot() + 1) * 20;
                 pendingRewardLevel.put(player.getUniqueId(), level);
                 msg(player, "Click an item in your inventory to set reward for level " + level);
-            } else if (event.getRawSlot() == 7) {
+            } else if (event.getRawSlot() == moneySlot) {
                 double money = getConfig().getDouble("moneyReward", 100.0);
                 if (event.isLeftClick()) {
-                    money -= 10;
+                    money = Math.max(0, money - 10);
                 } else if (event.isRightClick()) {
                     money += 10;
                 }
-                getConfig().set("moneyReward", Math.max(0, money));
+                getConfig().set("moneyReward", money);
                 saveConfig();
                 openAdminGui(player);
-            } else if (event.getRawSlot() == 6) {
+            } else if (event.getRawSlot() == capSlot) {
                 if (event.isLeftClick()) {
                     levelCap = Math.max(1, levelCap - 10);
                 } else if (event.isRightClick()) {
-                    levelCap += 10;
+                    levelCap = Math.min(1000, levelCap + 10);
                 }
                 getConfig().set("levelCap", levelCap);
                 saveConfig();
                 openAdminGui(player);
-            } else if (event.getRawSlot() == 8) {
+            } else if (event.getRawSlot() == dailySlot) {
+                int xp = getConfig().getInt("challengeRewards.daily.xp", 20);
+                double money = getConfig().getDouble("challengeRewards.daily.money", 0.0);
+                if (event.isLeftClick()) {
+                    xp = Math.max(0, xp + (event.isShiftClick() ? -10 : 10));
+                    getConfig().set("challengeRewards.daily.xp", xp);
+                } else if (event.isRightClick()) {
+                    money = Math.max(0, money + (event.isShiftClick() ? -10 : 10));
+                    getConfig().set("challengeRewards.daily.money", money);
+                }
+                saveConfig();
+                openAdminGui(player);
+            } else if (event.getRawSlot() == weeklySlot) {
+                int xp = getConfig().getInt("challengeRewards.weekly.xp", 50);
+                double money = getConfig().getDouble("challengeRewards.weekly.money", 0.0);
+                if (event.isLeftClick()) {
+                    xp = Math.max(0, xp + (event.isShiftClick() ? -10 : 10));
+                    getConfig().set("challengeRewards.weekly.xp", xp);
+                } else if (event.isRightClick()) {
+                    money = Math.max(0, money + (event.isShiftClick() ? -10 : 10));
+                    getConfig().set("challengeRewards.weekly.money", money);
+                }
+                saveConfig();
+                openAdminGui(player);
+            } else if (event.getRawSlot() == mobSlot) {
+                boolean enabled = getConfig().getBoolean("killRewards.mobs.enabled", true);
+                int xp = getConfig().getInt("killRewards.mobs.xp", 10);
+                double money = getConfig().getDouble("killRewards.mobs.money", 0.0);
+                if (event.isMiddleClick()) {
+                    enabled = !enabled;
+                    getConfig().set("killRewards.mobs.enabled", enabled);
+                } else if (event.isLeftClick()) {
+                    xp = Math.max(0, xp + (event.isShiftClick() ? -1 : 1));
+                    getConfig().set("killRewards.mobs.xp", xp);
+                } else if (event.isRightClick()) {
+                    money = Math.max(0, money + (event.isShiftClick() ? -1 : 1));
+                    getConfig().set("killRewards.mobs.money", money);
+                }
+                saveConfig();
+                openAdminGui(player);
+            } else if (event.getRawSlot() == playerSlot) {
+                boolean enabled = getConfig().getBoolean("killRewards.players.enabled", true);
+                int xp = getConfig().getInt("killRewards.players.xp", 25);
+                double money = getConfig().getDouble("killRewards.players.money", 0.0);
+                if (event.isMiddleClick()) {
+                    enabled = !enabled;
+                    getConfig().set("killRewards.players.enabled", enabled);
+                } else if (event.isLeftClick()) {
+                    xp = Math.max(0, xp + (event.isShiftClick() ? -1 : 1));
+                    getConfig().set("killRewards.players.xp", xp);
+                } else if (event.isRightClick()) {
+                    money = Math.max(0, money + (event.isShiftClick() ? -1 : 1));
+                    getConfig().set("killRewards.players.money", money);
+                }
+                saveConfig();
+                openAdminGui(player);
+            } else if (event.getRawSlot() == backSlot) {
                 openSkillGui(player);
             }
         } else if (title.equals("Stats")) {
@@ -294,7 +399,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             }
         } else if (title.equals("Challenges")) {
             event.setCancelled(true);
-            if (event.getRawSlot() == 8) {
+            if (event.getRawSlot() == 17) {
                 openSkillGui(player);
             }
         }
@@ -305,6 +410,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         data.addXp(amount);
         if (data.getLevel() < levelCap && data.tryLevelUp()) {
             msg(player, "Leveled up to " + data.getLevel());
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
             if (data.getLevel() % 20 == 0) {
                 String matName = getConfig().getString("itemRewards." + data.getLevel(), getConfig().getString("itemReward", "DIAMOND"));
                 Material mat = Material.matchMaterial(matName);
@@ -316,8 +422,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 economy.depositPlayer(player, money);
                 msg(player, "You earned $" + money);
                 data.getStats().addMoneyEarned(money);
-                data.addChallengeProgress(ChallengeType.MONEY_EARNED, money);
-                checkChallenge(player, data, ChallengeType.MONEY_EARNED);
+                addProgress(player, data, ChallengeType.MONEY_EARNED, money);
                 data.setLastBalance(economy.getBalance(player));
             }
         } else if (data.getLevel() >= levelCap) {
@@ -340,7 +445,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         }
         ItemStack challenges = new ItemStack(Material.PAPER);
         ItemMeta ch = challenges.getItemMeta();
-        ch.setDisplayName("Daily Challenges");
+        ch.setDisplayName("Challenges");
         challenges.setItemMeta(ch);
         inv.setItem(6, challenges);
 
@@ -360,8 +465,12 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     }
 
     private void openAdminGui(Player player) {
-        Inventory inv = Bukkit.createInventory(player, 9, "Admin");
-        for (int i = 0; i < 5; i++) {
+        int rewardSlots = levelCap / 20;
+        int extra = 6; // cap, money, daily, weekly, mob, player, back
+        int total = rewardSlots + extra + 1; // +1 for back
+        int size = ((total + 8) / 9) * 9;
+        Inventory inv = Bukkit.createInventory(player, size, "Admin");
+        for (int i = 0; i < rewardSlots; i++) {
             int level = (i + 1) * 20;
             String matName = getConfig().getString("itemRewards." + level, getConfig().getString("itemReward", "DIAMOND"));
             Material mat = Material.matchMaterial(matName);
@@ -373,41 +482,78 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             inv.setItem(i, it);
         }
 
+        int capSlot = size - (extra + 1);
         ItemStack cap = new ItemStack(Material.EXPERIENCE_BOTTLE);
         ItemMeta cm = cap.getItemMeta();
         cm.setDisplayName("Level Cap: " + levelCap);
         cap.setItemMeta(cm);
-        inv.setItem(6, cap);
+        inv.setItem(capSlot, cap);
 
         ItemStack item = new ItemStack(Material.GOLD_INGOT);
         ItemMeta meta = item.getItemMeta();
         meta.setDisplayName("Money reward: $" + getConfig().getDouble("moneyReward", 100.0));
         item.setItemMeta(meta);
-        inv.setItem(7, item);
+        inv.setItem(capSlot + 1, item);
+
+        ItemStack daily = new ItemStack(Material.PAPER);
+        ItemMeta dm = daily.getItemMeta();
+        dm.setDisplayName("Daily reward: " + getConfig().getInt("challengeRewards.daily.xp",20)
+                + " XP, $" + getConfig().getDouble("challengeRewards.daily.money",0.0));
+        daily.setItemMeta(dm);
+        inv.setItem(capSlot + 2, daily);
+
+        ItemStack weekly = new ItemStack(Material.MAP);
+        ItemMeta wm = weekly.getItemMeta();
+        wm.setDisplayName("Weekly reward: " + getConfig().getInt("challengeRewards.weekly.xp",50)
+                + " XP, $" + getConfig().getDouble("challengeRewards.weekly.money",0.0));
+        weekly.setItemMeta(wm);
+        inv.setItem(capSlot + 3, weekly);
+
+        ItemStack mob = new ItemStack(Material.ZOMBIE_HEAD);
+        ItemMeta mobm = mob.getItemMeta();
+        boolean mobsOn = getConfig().getBoolean("killRewards.mobs.enabled", true);
+        mobm.setDisplayName("Mob kill: " + (mobsOn ? "on" : "off") + " "
+                + getConfig().getInt("killRewards.mobs.xp",10) + " XP, $" + getConfig().getDouble("killRewards.mobs.money",0.0));
+        mob.setItemMeta(mobm);
+        inv.setItem(capSlot + 4, mob);
+
+        ItemStack playerItem = new ItemStack(Material.PLAYER_HEAD);
+        ItemMeta plm = playerItem.getItemMeta();
+        boolean playersOn = getConfig().getBoolean("killRewards.players.enabled", true);
+        plm.setDisplayName("Player kill: " + (playersOn ? "on" : "off") + " "
+                + getConfig().getInt("killRewards.players.xp",25) + " XP, $" + getConfig().getDouble("killRewards.players.money",0.0));
+        playerItem.setItemMeta(plm);
+        inv.setItem(capSlot + 5, playerItem);
 
         ItemStack back = new ItemStack(Material.ARROW);
         ItemMeta bm = back.getItemMeta();
         bm.setDisplayName("Back");
         back.setItemMeta(bm);
-        inv.setItem(8, back);
+        inv.setItem(capSlot + 6, back);
 
         player.openInventory(inv);
     }
 
     private void openChallengesGui(Player player) {
-        Inventory inv = Bukkit.createInventory(player, 9, "Challenges");
+        Inventory inv = Bukkit.createInventory(player, 18, "Challenges");
         PlayerData data = getData(player.getUniqueId());
         int i = 0;
-        for (ChallengeType type : ChallengeType.values()) {
-            double progress = data.getChallengeProgress().get(type);
+        for (ChallengeType type : activeDaily) {
+            double progress = data.getDailyProgress().get(type);
             double goal = challengeGoals.get(type);
-            inv.setItem(i++, createItem(Material.PAPER, type.name(), String.format("%.1f/%.1f", progress, goal)));
+            inv.setItem(i++, createItem(Material.PAPER, "Daily " + type.name(), String.format("%.1f/%.1f", progress, goal)));
+        }
+        i = 9;
+        for (ChallengeType type : activeWeekly) {
+            double progress = data.getWeeklyProgress().get(type);
+            double goal = challengeGoals.get(type);
+            inv.setItem(i++, createItem(Material.MAP, "Weekly " + type.name(), String.format("%.1f/%.1f", progress, goal)));
         }
         ItemStack back = new ItemStack(Material.ARROW);
         ItemMeta bm = back.getItemMeta();
         bm.setDisplayName("Back");
         back.setItemMeta(bm);
-        inv.setItem(8, back);
+        inv.setItem(17, back);
         player.openInventory(inv);
     }
 
@@ -449,13 +595,50 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         }
     }
 
-    private void checkChallenge(Player player, PlayerData data, ChallengeType type) {
-        double progress = data.getChallengeProgress().get(type);
+    private void checkChallenge(Player player, PlayerData data, ChallengeType type, boolean daily) {
+        double progress = daily ? data.getDailyProgress().get(type) : data.getWeeklyProgress().get(type);
         double goal = challengeGoals.getOrDefault(type, Double.MAX_VALUE);
         if (progress >= goal) {
-            msg(player, "Challenge completed: " + type.name().toLowerCase());
-            awardXp(player, 20);
-            data.getChallengeProgress().put(type, goal);
+            msg(player, (daily ? "Daily" : "Weekly") + " challenge completed: " + type.name().toLowerCase());
+            int xp = getConfig().getInt(daily ? "challengeRewards.daily.xp" : "challengeRewards.weekly.xp", daily ? 20 : 50);
+            double money = getConfig().getDouble(daily ? "challengeRewards.daily.money" : "challengeRewards.weekly.money", 0.0);
+            if (xp > 0) {
+                awardXp(player, xp);
+            }
+            if (money > 0) {
+                economy.depositPlayer(player, money);
+                msg(player, "You earned $" + money);
+                data.getStats().addMoneyEarned(money);
+                data.setLastBalance(economy.getBalance(player));
+            }
+            if (daily) {
+                data.getDailyProgress().put(type, goal);
+            } else {
+                data.getWeeklyProgress().put(type, goal);
+            }
+        }
+    }
+
+    private void addProgress(Player player, PlayerData data, ChallengeType type, double amount) {
+        if (activeDaily.contains(type)) {
+            double progress = data.getDailyProgress().get(type);
+            double goal = challengeGoals.get(type);
+            if (progress < goal) {
+                data.getDailyProgress().put(type, Math.min(goal, progress + amount));
+                if (progress + amount >= goal) {
+                    checkChallenge(player, data, type, true);
+                }
+            }
+        }
+        if (activeWeekly.contains(type)) {
+            double progress = data.getWeeklyProgress().get(type);
+            double goal = challengeGoals.get(type);
+            if (progress < goal) {
+                data.getWeeklyProgress().put(type, Math.min(goal, progress + amount));
+                if (progress + amount >= goal) {
+                    checkChallenge(player, data, type, false);
+                }
+            }
         }
     }
 
@@ -560,8 +743,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 double amount = Double.parseDouble(args[1]);
                 PlayerData data = getData(player.getUniqueId());
                 data.getStats().addMoneySpent(amount);
-                data.addChallengeProgress(ChallengeType.MONEY_SPENT, amount);
-                checkChallenge(player, data, ChallengeType.MONEY_SPENT);
+                addProgress(player, data, ChallengeType.MONEY_SPENT, amount);
                 economy.withdrawPlayer(player, amount);
                 msg(player, "You spent $" + amount);
                 data.setLastBalance(economy.getBalance(player));
@@ -654,15 +836,31 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             if (Math.abs(diff) > 0.01) {
                 if (diff > 0) {
                     data.getStats().addMoneyEarned(diff);
-                    data.addChallengeProgress(ChallengeType.MONEY_EARNED, diff);
-                    checkChallenge(p, data, ChallengeType.MONEY_EARNED);
+                    addProgress(p, data, ChallengeType.MONEY_EARNED, diff);
                 } else {
                     diff = -diff;
                     data.getStats().addMoneySpent(diff);
-                    data.addChallengeProgress(ChallengeType.MONEY_SPENT, diff);
-                    checkChallenge(p, data, ChallengeType.MONEY_SPENT);
+                    addProgress(p, data, ChallengeType.MONEY_SPENT, diff);
                 }
                 data.setLastBalance(current);
+            }
+        }
+    }
+
+    private void checkChallengeResets() {
+        long now = System.currentTimeMillis();
+        if (now - lastDailySelect > 86400000L) {
+            lastDailySelect = now;
+            selectDailyChallenges();
+            for (PlayerData d : players.values()) {
+                d.setLastDailyReset(now);
+            }
+        }
+        if (now - lastWeeklySelect > 604800000L) {
+            lastWeeklySelect = now;
+            selectWeeklyChallenges();
+            for (PlayerData d : players.values()) {
+                d.setLastWeeklyReset(now);
             }
         }
     }

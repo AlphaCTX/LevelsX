@@ -266,10 +266,34 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         if (!(event.getWhoClicked() instanceof Player)) return;
         Player player = (Player) event.getWhoClicked();
         String title = event.getView().getTitle();
-        event.setCancelled(true);
+
+        // Determine if this is one of our GUIs
+        boolean custom = title.equals("Skills") || title.equals("Admin") || title.equals("Stats") ||
+                title.equals("Challenges") || title.equals("Config") || title.equals("Menu");
+
+        if (custom) {
+            // cancel if clicking the top inventory or using shift-click
+            if (event.getClickedInventory() != player.getInventory() || event.isShiftClick()) {
+                event.setCancelled(true);
+            }
+        } else {
+            return;
+        }
 
         // Haal één keer ClickType op
         ClickType click = event.getClick();
+
+        // MAIN MENU
+        if (title.equals("Menu")) {
+            switch (event.getRawSlot()) {
+                case 0: openSkillGui(player); break;
+                case 1: openChallengesGui(player); break;
+                case 2: openChallengesGui(player); break;
+                case 3: openStatsGui(player); break;
+                case 4: openConfigGui(player); break;
+            }
+            return;
+        }
 
         // SKILLS GUI
         if (title.equals("Skills")) {
@@ -280,10 +304,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 data.levelSkill(skill);
                 updateLungCapacity(player, data);
                 openSkillGui(player);
-            } else if (slot == 6) {
-                openChallengesGui(player);
             } else if (slot == 7) {
-                openStatsGui(player);
+                openMainGui(player);
             }
             return;
         }
@@ -423,20 +445,37 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
 
             // BACK BUTTON
             if (event.getRawSlot() == backSlot) {
-                openSkillGui(player);
+                openMainGui(player);
             }
             return;
         }
 
         // STATS GUI
         if (title.equals("Stats")) {
-            if (event.getRawSlot() == 26) openSkillGui(player);
+            if (event.getRawSlot() == 26) openMainGui(player);
             return;
         }
 
         // CHALLENGES GUI
         if (title.equals("Challenges")) {
-            if (event.getRawSlot() == 17) openSkillGui(player);
+            if (event.getRawSlot() == 17) openMainGui(player);
+            return;
+        }
+
+        // CONFIG GUI
+        if (title.equals("Config")) {
+            PlayerData data = getData(player.getUniqueId());
+            if (event.getRawSlot() == 0) {
+                data.setScoreboardEnabled(!data.isScoreboardEnabled());
+                if (data.isScoreboardEnabled()) updateScoreboard(player); else player.setScoreboard(scoreboardManager.getNewScoreboard());
+                openConfigGui(player);
+            } else if (event.getRawSlot() == 1) {
+                data.setShowBalance(!data.isShowBalance());
+                updateScoreboard(player);
+                openConfigGui(player);
+            } else if (event.getRawSlot() == 8) {
+                openMainGui(player);
+            }
         }
     }
 
@@ -471,6 +510,16 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         }
     }
 
+    private void openMainGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 9, "Menu");
+        inv.setItem(0, createItem(Material.ENCHANTED_BOOK, "Skills"));
+        inv.setItem(1, createItem(Material.PAPER, "Daily Challenges"));
+        inv.setItem(2, createItem(Material.MAP, "Weekly Rewards"));
+        inv.setItem(3, createItem(Material.BOOK, "Stats"));
+        inv.setItem(4, createItem(Material.REDSTONE_COMPARATOR, "Config"));
+        player.openInventory(inv);
+    }
+
     private void openSkillGui(Player player) {
         Inventory inv = Bukkit.createInventory(player, 9, "Skills");
         PlayerData data = getData(player.getUniqueId());
@@ -482,9 +531,17 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             item.setItemMeta(meta);
             inv.setItem(slot++, item);
         }
-        inv.setItem(6, createItem(Material.PAPER, "Challenges"));
-        inv.setItem(7, createItem(Material.BOOK, "View Stats"));
+        inv.setItem(7, createItem(Material.ARROW, "Back"));
         inv.setItem(8, createItem(Material.EXPERIENCE_BOTTLE, "Skill Points: " + data.getSkillPoints()));
+        player.openInventory(inv);
+    }
+
+    private void openConfigGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 9, "Config");
+        PlayerData data = getData(player.getUniqueId());
+        inv.setItem(0, createItem(Material.COMPARATOR, "Scoreboard", data.isScoreboardEnabled()?"ON":"OFF"));
+        inv.setItem(1, createItem(Material.EMERALD, "Show Balance", data.isShowBalance()?"ON":"OFF"));
+        inv.setItem(8, createItem(Material.ARROW, "Back"));
         player.openInventory(inv);
     }
 
@@ -648,7 +705,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         }
         Player player = (Player) sender;
         if (args.length == 0) {
-            openSkillGui(player);
+            openMainGui(player);
             return true;
         }
         switch (args[0].toLowerCase()) {
@@ -783,12 +840,17 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         Objective obj = board.registerNewObjective("levelsx","dummy",ChatColor.GREEN+"LevelsX");
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
         int needed = data.getLevel()*100;
-        obj.getScore(ChatColor.YELLOW+"Level: "+ChatColor.WHITE+data.getLevel()).setScore(4);
+        int line = 4;
+        obj.getScore(ChatColor.YELLOW+"Level: "+ChatColor.WHITE+data.getLevel()).setScore(line--);
+        if (data.isShowBalance()) {
+            double bal = economy.getBalance(player);
+            obj.getScore(ChatColor.GOLD+"Balance: "+ChatColor.WHITE+String.format("%.2f", bal)).setScore(line--);
+        }
         if (data.getLevel()>=levelCap) {
-            obj.getScore(ChatColor.AQUA+"MAX LEVEL").setScore(3);
+            obj.getScore(ChatColor.AQUA+"MAX LEVEL").setScore(line--);
         } else {
-            obj.getScore(ChatColor.YELLOW+"XP: "+ChatColor.WHITE+data.getXp()+"/"+needed).setScore(3);
-            obj.getScore(createBar((double)data.getXp()/needed)).setScore(2);
+            obj.getScore(ChatColor.YELLOW+"XP: "+ChatColor.WHITE+data.getXp()+"/"+needed).setScore(line--);
+            obj.getScore(createBar((double)data.getXp()/needed)).setScore(line--);
         }
         player.setScoreboard(board);
     }

@@ -29,9 +29,12 @@ public final class DataUtil {
         stats.addKilometersTraveled(cfg.getDouble("stats.km", 0));
         stats.setTimeOnline(cfg.getLong("stats.time", 0));
         data.setLastBalance(cfg.getDouble("lastBalance", 0));
-        data.loadLastChallengeReset(cfg.getLong("lastChallengeReset", System.currentTimeMillis()));
+        data.setScoreboardEnabled(cfg.getBoolean("scoreboardEnabled", false));
+        data.loadLastDailyReset(cfg.getLong("lastDailyReset", System.currentTimeMillis()));
+        data.loadLastWeeklyReset(cfg.getLong("lastWeeklyReset", System.currentTimeMillis()));
         for (ChallengeType ct : ChallengeType.values()) {
-            data.addChallengeProgress(ct, cfg.getDouble("challenges." + ct.name(), 0));
+            data.addDailyProgress(ct, cfg.getDouble("daily." + ct.name(), 0));
+            data.addWeeklyProgress(ct, cfg.getDouble("weekly." + ct.name(), 0));
         }
     }
 
@@ -53,9 +56,14 @@ public final class DataUtil {
         cfg.set("stats.km", stats.getKilometersTraveled());
         cfg.set("stats.time", stats.getTimeOnline());
         cfg.set("lastBalance", data.getLastBalance());
-        cfg.set("lastChallengeReset", data.getLastChallengeReset());
-        for (Map.Entry<ChallengeType, Double> e : data.getChallengeProgress().entrySet()) {
-            cfg.set("challenges." + e.getKey().name(), e.getValue());
+        cfg.set("scoreboardEnabled", data.isScoreboardEnabled());
+        cfg.set("lastDailyReset", data.getLastDailyReset());
+        cfg.set("lastWeeklyReset", data.getLastWeeklyReset());
+        for (Map.Entry<ChallengeType, Double> e : data.getDailyProgress().entrySet()) {
+            cfg.set("daily." + e.getKey().name(), e.getValue());
+        }
+        for (Map.Entry<ChallengeType, Double> e : data.getWeeklyProgress().entrySet()) {
+            cfg.set("weekly." + e.getKey().name(), e.getValue());
         }
     }
 }

@@ -1,18 +1,34 @@
+# =====================================
+#  LevelsX Plugin Configuration File
+# =====================================
+
+# --- Storage Settings ---
 storage:
+  # Choose your storage method: 'sqlite' or 'mysql'
   type: sqlite
+
+  # MySQL settings (only used if type: mysql)
   mysql:
-    host: localhost
-    port: 3306
-    database: levelsx
-    user: root
-    password: ''
-moneyReward: 100.0
-itemReward: DIAMOND
-itemRewards: {}
-levelCap: 100
+    host: localhost    # Database host
+    port: 3306         # Database port
+    database: levelsx      # Database name
+    user: root         # Database user
+    password: ''           # Database password
+
+# --- Level-Up Rewards ---
+# Rewards given to a player upon leveling up
+moneyReward: 100.0        # Amount of in-game currency
+itemReward: DIAMOND       # Single item reward (e.g., DIAMOND)
+itemRewards: {}           # Multiple item rewards (format: ITEM_NAME: AMOUNT)
+
+# --- General Limits ---
+levelCap: 100             # Maximum achievable level
+
+# --- Challenge Goals ---
+# Goals players must reach for extra challenges
 challengeGoals:
-  MOB_KILLS: 10
-  DAMAGE_TAKEN: 500
-  MONEY_EARNED: 1000
-  MONEY_SPENT: 1000
-  KILOMETERS_TRAVELED: 5
+  MOB_KILLS: 10    # Number of mobs to kill
+  DAMAGE_TAKEN: 500   # Amount of damage to receive
+  MONEY_EARNED: 1000  # Amount of money to earn
+  MONEY_SPENT: 1000  # Amount of money to spend
+  KILOMETERS_TRAVELED: 5     # Distance to travel in kilometers

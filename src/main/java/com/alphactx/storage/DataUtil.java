@@ -28,6 +28,7 @@ public final class DataUtil {
         stats.addMoneySpent(cfg.getDouble("stats.moneySpent", 0));
         stats.addKilometersTraveled(cfg.getDouble("stats.km", 0));
         stats.setTimeOnline(cfg.getLong("stats.time", 0));
+        data.setLastBalance(cfg.getDouble("lastBalance", 0));
         data.loadLastChallengeReset(cfg.getLong("lastChallengeReset", System.currentTimeMillis()));
         for (ChallengeType ct : ChallengeType.values()) {
             data.addChallengeProgress(ct, cfg.getDouble("challenges." + ct.name(), 0));
@@ -51,6 +52,7 @@ public final class DataUtil {
         cfg.set("stats.moneySpent", stats.getMoneySpent());
         cfg.set("stats.km", stats.getKilometersTraveled());
         cfg.set("stats.time", stats.getTimeOnline());
+        cfg.set("lastBalance", data.getLastBalance());
         cfg.set("lastChallengeReset", data.getLastChallengeReset());
         for (Map.Entry<ChallengeType, Double> e : data.getChallengeProgress().entrySet()) {
             cfg.set("challenges." + e.getKey().name(), e.getValue());

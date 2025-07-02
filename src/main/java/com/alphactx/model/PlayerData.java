@@ -23,6 +23,7 @@ public class PlayerData {
     private final Map<ChallengeType, Double> challengeProgress = new EnumMap<>(ChallengeType.class);
     private long lastChallengeReset = System.currentTimeMillis();
     private boolean scoreboardEnabled = false;
+    private double lastBalance = 0.0;
 
     public PlayerData(UUID uuid) {
         this.uuid = uuid;
@@ -144,5 +145,13 @@ public class PlayerData {
 
     public void setScoreboardEnabled(boolean enabled) {
         this.scoreboardEnabled = enabled;
+    }
+
+    public double getLastBalance() {
+        return lastBalance;
+    }
+
+    public void setLastBalance(double lastBalance) {
+        this.lastBalance = lastBalance;
     }
 }

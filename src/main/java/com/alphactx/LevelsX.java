@@ -93,11 +93,13 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         loadData();
         Bukkit.getPluginManager().registerEvents(this, this);
         Objects.requireNonNull(getCommand("skill")).setTabCompleter(this);
+        Bukkit.getScheduler().runTaskTimer(this, this::checkBalances, 20L, 20L);
         getLogger().info("LevelsX enabled");
     }
 
     @Override
     public void onDisable() {
+        checkBalances();
         saveData();
         try {
             if (storage != null) storage.close();
@@ -114,6 +116,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     public void onPlayerJoin(PlayerJoinEvent event) {
         PlayerData data = getData(event.getPlayer().getUniqueId());
         data.setLastJoin(System.currentTimeMillis());
+        data.setLastBalance(economy.getBalance(event.getPlayer()));
         long now = System.currentTimeMillis();
         if (now - data.getLastChallengeReset() > 86400000L) {
             data.setLastChallengeReset(now);
@@ -127,6 +130,21 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         PlayerData data = getData(event.getPlayer().getUniqueId());
         long session = System.currentTimeMillis() - data.getLastJoin();
         data.getStats().addTimeOnline(session);
+        double current = economy.getBalance(event.getPlayer());
+        double diff = current - data.getLastBalance();
+        if (Math.abs(diff) > 0.01) {
+            if (diff > 0) {
+                data.getStats().addMoneyEarned(diff);
+                data.addChallengeProgress(ChallengeType.MONEY_EARNED, diff);
+                checkChallenge(event.getPlayer(), data, ChallengeType.MONEY_EARNED);
+            } else {
+                diff = -diff;
+                data.getStats().addMoneySpent(diff);
+                data.addChallengeProgress(ChallengeType.MONEY_SPENT, diff);
+                checkChallenge(event.getPlayer(), data, ChallengeType.MONEY_SPENT);
+            }
+        }
+        data.setLastBalance(current);
     }
 
     @EventHandler
@@ -300,6 +318,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 data.getStats().addMoneyEarned(money);
                 data.addChallengeProgress(ChallengeType.MONEY_EARNED, money);
                 checkChallenge(player, data, ChallengeType.MONEY_EARNED);
+                data.setLastBalance(economy.getBalance(player));
             }
         } else if (data.getLevel() >= levelCap) {
             int needed = data.getLevel() * 100;
@@ -545,6 +564,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 checkChallenge(player, data, ChallengeType.MONEY_SPENT);
                 economy.withdrawPlayer(player, amount);
                 msg(player, "You spent $" + amount);
+                data.setLastBalance(economy.getBalance(player));
                 int xp = (int) (amount / 100);
                 if (xp > 0) {
                     awardXp(player, xp);
@@ -624,6 +644,27 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             obj.getScore(createBar((double) data.getXp() / needed)).setScore(2);
         }
         player.setScoreboard(board);
+    }
+
+    private void checkBalances() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            PlayerData data = getData(p.getUniqueId());
+            double current = economy.getBalance(p);
+            double diff = current - data.getLastBalance();
+            if (Math.abs(diff) > 0.01) {
+                if (diff > 0) {
+                    data.getStats().addMoneyEarned(diff);
+                    data.addChallengeProgress(ChallengeType.MONEY_EARNED, diff);
+                    checkChallenge(p, data, ChallengeType.MONEY_EARNED);
+                } else {
+                    diff = -diff;
+                    data.getStats().addMoneySpent(diff);
+                    data.addChallengeProgress(ChallengeType.MONEY_SPENT, diff);
+                    checkChallenge(p, data, ChallengeType.MONEY_SPENT);
+                }
+                data.setLastBalance(current);
+            }
+        }
     }
 
     private void toggleScoreboard(Player player) {

@@ -11,6 +11,7 @@ minecraft spigot plugin gaan maken voor versie 1.16 tot 1.21 met de volgende fun
 -  speler GUI voor inzien van stats, levels & rewards. Ook voor spenderen van skillpoints op skills
 - Scoreboard om level en XP progressie te tonen (aan/uit te zetten met /skill scoreboard)
 - Integratie met Vault voor het uitkeren van geldbeloningen
+- Transacties via Vault worden automatisch geregistreerd voor statistieken
 - Admin GUI laat het selecteren van item rewards per 20 levels toe en het instellen van een level cap
 - Skills: damage reduction, healing, lifesteal, damage, lung capacity,
 - Opslag van spelersdata via SQLite of MySQL (config `storage`)

@@ -265,6 +265,9 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         addProgress(event.getPlayer(), data, ChallengeType.KILOMETERS_TRAVELED, km);
         int xp = (int) Math.round(km * 5);
         if (xp > 0) awardXp(event.getPlayer(), xp);
+        if (data.isScoreboardEnabled() && data.isFieldEnabled(ScoreField.KM)) {
+            updateScoreboard(event.getPlayer());
+        }
     }
 
     @EventHandler
@@ -503,12 +506,6 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 if (data.isScoreboardEnabled()) updateScoreboard(player); else player.setScoreboard(scoreboardManager.getNewScoreboard());
                 openConfigGui(player);
             } else if (event.getRawSlot() == 1) {
-                boolean en = data.isFieldEnabled(ScoreField.BALANCE);
-                data.setFieldEnabled(ScoreField.BALANCE, !en);
-                data.setShowBalance(!en);
-                updateScoreboard(player);
-                openConfigGui(player);
-            } else if (event.getRawSlot() == 2) {
                 openScoreboardGui(player);
             } else if (event.getRawSlot() == 8) {
                 openMainGui(player);
@@ -700,8 +697,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         Inventory inv = Bukkit.createInventory(player, 9, "Config");
         PlayerData data = getData(player.getUniqueId());
         inv.setItem(0, createItem(Material.COMPARATOR, "Scoreboard", data.isScoreboardEnabled()?"ON":"OFF"));
-        inv.setItem(1, createItem(Material.EMERALD, "Show Balance", data.isFieldEnabled(ScoreField.BALANCE)?"ON":"OFF"));
-        inv.setItem(2, createItem(Material.PAPER, "Scoreboard Fields"));
+        inv.setItem(1, createItem(Material.PAPER, "Scoreboard Fields"));
         inv.setItem(8, createItem(Material.ARROW, "Back"));
         player.openInventory(inv);
     }
@@ -832,6 +828,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 msg(player, "/skill scoreboard");
                 msg(player, "/skill backup <sql|sqlite>");
                 msg(player, "/skill reload");
+                msg(player, "/skill setlevel <player> <level>");
+                msg(player, "/skill setskillpoints <player> <amount>");
                 break;
             case "admin":
                 if (!player.hasPermission("skill.admin")) msg(player, "No permission");
@@ -860,6 +858,39 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 if (!player.hasPermission("skill.admin")) msg(player, "No permission");
                 else if (args.length>1) doBackup(player, args[1]);
                 else msg(player,"Specify sql of sqlite");
+                break;
+            case "setlevel":
+                if (!player.hasPermission("skill.admin")) { msg(player, "No permission"); }
+                else if (args.length < 3) { msg(player, "Use /skill setlevel <player> <level>"); }
+                else {
+                    Player target = Bukkit.getPlayer(args[1]);
+                    if (target == null) { msg(player, "Player not online"); }
+                    else {
+                        try {
+                            int lvl = Integer.parseInt(args[2]);
+                            PlayerData d = getData(target.getUniqueId());
+                            d.setLevel(Math.max(1, Math.min(levelCap, lvl)));
+                            updateScoreboard(target);
+                            msg(player, "Level set to " + lvl + " for " + target.getName());
+                        } catch (NumberFormatException e) { msg(player, "Invalid level"); }
+                    }
+                }
+                break;
+            case "setskillpoints":
+                if (!player.hasPermission("skill.admin")) { msg(player, "No permission"); }
+                else if (args.length < 3) { msg(player, "Use /skill setskillpoints <player> <amount>"); }
+                else {
+                    Player target = Bukkit.getPlayer(args[1]);
+                    if (target == null) { msg(player, "Player not online"); }
+                    else {
+                        try {
+                            int amt = Integer.parseInt(args[2]);
+                            PlayerData d = getData(target.getUniqueId());
+                            d.setSkillPoints(Math.max(0, amt));
+                            msg(player, "Skill points set to " + amt + " for " + target.getName());
+                        } catch (NumberFormatException e) { msg(player, "Invalid amount"); }
+                    }
+                }
                 break;
             case "spend":
                 if (args.length>1) doSpend(player,args[1]);

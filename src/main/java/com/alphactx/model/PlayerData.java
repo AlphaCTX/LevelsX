@@ -135,6 +135,11 @@ public class PlayerData {
         this.skillPoints += amount;
     }
 
+    /** Set the player's skill point balance directly. */
+    public void setSkillPoints(int amount) {
+        this.skillPoints = amount;
+    }
+
     public Map<ChallengeType, Double> getDailyProgress() {
         return dailyProgress;
     }

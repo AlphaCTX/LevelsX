@@ -23,6 +23,7 @@ itemRewards: {}           # Multiple item rewards (format: ITEM_NAME: AMOUNT)
 
 # --- General Limits ---
 levelCap: 100             # Maximum achievable level
+autosave: 5               # Minutes between automatic data saves
 
 # --- Challenge Goals ---
 # Goals players must reach for extra challenges

@@ -20,6 +20,7 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -61,6 +62,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     private final Map<UUID, Integer> pendingRewardLevel = new HashMap<>();
     private int levelCap;
     private DataStorage storage;
+    private int autosaveTask = -1;
 
     private void initChallenges() {
         FileConfiguration cfg = getConfig();
@@ -115,6 +117,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         Objects.requireNonNull(getCommand("skill")).setTabCompleter(this);
         Bukkit.getScheduler().runTaskTimer(this, this::checkBalances, 20L, 20L);
         Bukkit.getScheduler().runTaskTimer(this, this::checkChallengeResets, 72000L, 72000L);
+        int minutes = Math.max(1, getConfig().getInt("autosave", 5));
+        autosaveTask = Bukkit.getScheduler().scheduleSyncRepeatingTask(this, this::saveData, 20L*60*minutes, 20L*60*minutes);
         getLogger().info("LevelsX enabled");
     }
 
@@ -122,6 +126,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     public void onDisable() {
         checkBalances();
         saveData();
+        if (autosaveTask != -1) Bukkit.getScheduler().cancelTask(autosaveTask);
         try {
             if (storage != null) storage.close();
         } catch (Exception e) {
@@ -272,7 +277,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         boolean custom = title.equals("Skills") || title.equals("Admin Menu") || title.equals("Level Config") ||
                 title.equals("Challenge Config") || title.startsWith("Challenge ") || title.equals("Kill Config") ||
                 title.equals("Stats") || title.equals("Daily") || title.equals("Weekly") ||
-                title.equals("Config") || title.equals("Menu");
+                title.equals("Config") || title.equals("Menu") || title.equals("Scoreboard");
 
         if (custom) {
             boolean picking = pendingRewardLevel.containsKey(player.getUniqueId());
@@ -826,6 +831,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 msg(player, "/skill spend <amount>");
                 msg(player, "/skill scoreboard");
                 msg(player, "/skill backup <sql|sqlite>");
+                msg(player, "/skill reload");
                 break;
             case "admin":
                 if (!player.hasPermission("skill.admin")) msg(player, "No permission");
@@ -842,6 +848,13 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 break;
             case "scoreboard":
                 toggleScoreboard(player);
+                break;
+            case "reload":
+                if (!player.hasPermission("skill.admin")) msg(player, "No permission");
+                else {
+                    reloadPlugin();
+                    msg(player, "Config reloaded");
+                }
                 break;
             case "backup":
                 if (!player.hasPermission("skill.admin")) msg(player, "No permission");
@@ -1068,10 +1081,20 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         }
     }
 
+    private void reloadPlugin() {
+        reloadConfig();
+        levelCap = Math.min(1000, Math.max(1, getConfig().getInt("levelCap", 100)));
+        initChallenges();
+        if (autosaveTask != -1) Bukkit.getScheduler().cancelTask(autosaveTask);
+        int minutes = Math.max(1, getConfig().getInt("autosave", 5));
+        autosaveTask = Bukkit.getScheduler().scheduleSyncRepeatingTask(this, this::saveData, 20L*60*minutes, 20L*60*minutes);
+        for (Player p : Bukkit.getOnlinePlayers()) updateScoreboard(p);
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length==1) {
-            return Arrays.asList("help","admin","leaderboard","stats","challenges","spend","scoreboard","backup")
+            return Arrays.asList("help","admin","leaderboard","stats","challenges","spend","scoreboard","backup","reload")
                     .stream().filter(s->s.startsWith(args[0].toLowerCase())).collect(Collectors.toList());
         }
         if (args.length==2 && args[0].equalsIgnoreCase("leaderboard")) {

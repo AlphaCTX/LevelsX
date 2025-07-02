@@ -25,6 +25,7 @@ public class PlayerData {
     private long lastDailyReset = System.currentTimeMillis();
     private long lastWeeklyReset = System.currentTimeMillis();
     private boolean scoreboardEnabled = false;
+    private boolean showBalance = false;
     private double lastBalance = 0.0;
 
     public PlayerData(UUID uuid) {
@@ -166,6 +167,14 @@ public class PlayerData {
 
     public void setScoreboardEnabled(boolean enabled) {
         this.scoreboardEnabled = enabled;
+    }
+
+    public boolean isShowBalance() {
+        return showBalance;
+    }
+
+    public void setShowBalance(boolean showBalance) {
+        this.showBalance = showBalance;
     }
 
     public double getLastBalance() {

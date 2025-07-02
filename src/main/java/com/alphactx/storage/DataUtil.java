@@ -30,6 +30,7 @@ public final class DataUtil {
         stats.setTimeOnline(cfg.getLong("stats.time", 0));
         data.setLastBalance(cfg.getDouble("lastBalance", 0));
         data.setScoreboardEnabled(cfg.getBoolean("scoreboardEnabled", false));
+        data.setShowBalance(cfg.getBoolean("showBalance", false));
         data.loadLastDailyReset(cfg.getLong("lastDailyReset", System.currentTimeMillis()));
         data.loadLastWeeklyReset(cfg.getLong("lastWeeklyReset", System.currentTimeMillis()));
         for (ChallengeType ct : ChallengeType.values()) {
@@ -57,6 +58,7 @@ public final class DataUtil {
         cfg.set("stats.time", stats.getTimeOnline());
         cfg.set("lastBalance", data.getLastBalance());
         cfg.set("scoreboardEnabled", data.isScoreboardEnabled());
+        cfg.set("showBalance", data.isShowBalance());
         cfg.set("lastDailyReset", data.getLastDailyReset());
         cfg.set("lastWeeklyReset", data.getLastWeeklyReset());
         for (Map.Entry<ChallengeType, Double> e : data.getDailyProgress().entrySet()) {

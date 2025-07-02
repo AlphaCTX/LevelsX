@@ -53,3 +53,7 @@ killRewards:
     enabled: true
     xp: 25
     money: 0.0
+
+# --- Scoreboard Defaults ---
+scoreboard:
+  showBalance: false

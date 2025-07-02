@@ -1,4 +1,11 @@
-players: {}
+storage:
+  type: sqlite
+  mysql:
+    host: localhost
+    port: 3306
+    database: levelsx
+    user: root
+    password: ''
 moneyReward: 100.0
 itemReward: DIAMOND
 itemRewards: {}

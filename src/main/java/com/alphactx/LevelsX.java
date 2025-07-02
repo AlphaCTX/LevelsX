@@ -24,6 +24,11 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
+import com.alphactx.storage.DataStorage;
+import com.alphactx.storage.SqliteStorage;
+import com.alphactx.storage.MySqlStorage;
+import com.alphactx.storage.DataUtil;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.ChatColor;
 import org.bukkit.scoreboard.DisplaySlot;
@@ -38,6 +43,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
 import java.util.*;
+import java.io.File;
 import java.util.stream.Collectors;
 
 public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
@@ -47,6 +53,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     private Economy economy;
     private final Map<UUID, Integer> pendingRewardLevel = new HashMap<>();
     private int levelCap;
+    private DataStorage storage;
 
     private void initChallenges() {
         FileConfiguration cfg = getConfig();
@@ -76,6 +83,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         saveDefaultConfig();
         scoreboardManager = Bukkit.getScoreboardManager();
         levelCap = getConfig().getInt("levelCap", 100);
+        setupStorage();
         if (!setupEconomy()) {
             getLogger().severe("Vault dependency not found");
             getServer().getPluginManager().disablePlugin(this);
@@ -91,6 +99,11 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     @Override
     public void onDisable() {
         saveData();
+        try {
+            if (storage != null) storage.close();
+        } catch (Exception e) {
+            getLogger().severe("Failed to close storage: " + e.getMessage());
+        }
     }
 
     private PlayerData getData(UUID uuid) {
@@ -114,6 +127,11 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         PlayerData data = getData(event.getPlayer().getUniqueId());
         long session = System.currentTimeMillis() - data.getLastJoin();
         data.getStats().addTimeOnline(session);
+    }
+
+    @EventHandler
+    public void onChat(AsyncPlayerChatEvent event) {
+        event.setFormat(ChatColor.GOLD + "[LevelsX] " + ChatColor.RESET + "%s: %s");
     }
 
     @EventHandler
@@ -462,6 +480,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             msg(player, "/skill challenges");
             msg(player, "/skill spend <amount>");
             msg(player, "/skill scoreboard");
+            msg(player, "/skill backup <sql|sqlite>");
             return true;
         }
         if (args[0].equalsIgnoreCase("admin")) {
@@ -489,6 +508,34 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             toggleScoreboard(player);
             return true;
         }
+        if (args[0].equalsIgnoreCase("backup") && args.length > 1) {
+            if (!player.hasPermission("skill.admin")) {
+                msg(player, "No permission");
+                return true;
+            }
+            String dest = args[1];
+            try {
+                if (dest.equalsIgnoreCase("sql")) {
+                    FileConfiguration cfg = getConfig();
+                    MySqlStorage backup = new MySqlStorage(
+                            cfg.getString("storage.mysql.host", "localhost"),
+                            cfg.getInt("storage.mysql.port", 3306),
+                            cfg.getString("storage.mysql.database", "levelsx"),
+                            cfg.getString("storage.mysql.user", "root"),
+                            cfg.getString("storage.mysql.password", ""));
+                    backup.save(players);
+                    backup.close();
+                } else {
+                    SqliteStorage backup = new SqliteStorage(new File(getDataFolder(), "backup"));
+                    backup.save(players);
+                    backup.close();
+                }
+                msg(player, "Backup completed");
+            } catch (Exception e) {
+                msg(player, "Backup failed: " + e.getMessage());
+            }
+            return true;
+        }
         if (args[0].equalsIgnoreCase("spend") && args.length > 1) {
             try {
                 double amount = Double.parseDouble(args[1]);
@@ -512,69 +559,23 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     }
 
     private void loadData() {
-        FileConfiguration cfg = getConfig();
-        if (cfg.isConfigurationSection("players")) {
-            for (String key : cfg.getConfigurationSection("players").getKeys(false)) {
-                UUID id = UUID.fromString(key);
-                PlayerData data = new PlayerData(id);
-                data.setLevel(cfg.getInt("players." + key + ".level", 1));
-                data.setXp(cfg.getInt("players." + key + ".xp", 0));
-                data.addSkillPoints(cfg.getInt("players." + key + ".skillPoints", 0));
-                if (cfg.isConfigurationSection("players." + key + ".skills")) {
-                    for (String s : cfg.getConfigurationSection("players." + key + ".skills").getKeys(false)) {
-                        Skill skill = Skill.valueOf(s);
-                        data.setSkillLevel(skill, cfg.getInt("players." + key + ".skills." + s, 0));
-                    }
-                }
-                Stats stats = data.getStats();
-                stats.addKill(cfg.getInt("players." + key + ".stats.kills", 0));
-                stats.addMobKill(cfg.getInt("players." + key + ".stats.mobKills", 0));
-                stats.addDeath(cfg.getInt("players." + key + ".stats.deaths", 0));
-                stats.addDamageDealt(cfg.getDouble("players." + key + ".stats.damageDealt", 0));
-                stats.addDamageTaken(cfg.getDouble("players." + key + ".stats.damageTaken", 0));
-                stats.addMoneyEarned(cfg.getDouble("players." + key + ".stats.moneyEarned", 0));
-                stats.addMoneySpent(cfg.getDouble("players." + key + ".stats.moneySpent", 0));
-                stats.addKilometersTraveled(cfg.getDouble("players." + key + ".stats.km", 0));
-                stats.setTimeOnline(cfg.getLong("players." + key + ".stats.time", 0));
-                data.loadLastChallengeReset(cfg.getLong("players." + key + ".lastChallengeReset", System.currentTimeMillis()));
-                if (cfg.isConfigurationSection("players." + key + ".challenges")) {
-                    for (String t : cfg.getConfigurationSection("players." + key + ".challenges").getKeys(false)) {
-                        ChallengeType type = ChallengeType.valueOf(t);
-                        data.addChallengeProgress(type, cfg.getDouble("players." + key + ".challenges." + t));
-                    }
-                }
-                players.put(id, data);
+        try {
+            if (storage != null) {
+                storage.load(players);
             }
+        } catch (Exception e) {
+            getLogger().severe("Failed to load data: " + e.getMessage());
         }
     }
 
     private void saveData() {
-        FileConfiguration cfg = getConfig();
-        for (Map.Entry<UUID, PlayerData> entry : players.entrySet()) {
-            UUID id = entry.getKey();
-            PlayerData data = entry.getValue();
-            cfg.set("players." + id + ".xp", data.getXp());
-            cfg.set("players." + id + ".level", data.getLevel());
-            cfg.set("players." + id + ".skillPoints", data.getSkillPoints());
-            Stats stats = data.getStats();
-            cfg.set("players." + id + ".stats.kills", stats.getKills());
-            cfg.set("players." + id + ".stats.mobKills", stats.getMobKills());
-            cfg.set("players." + id + ".stats.deaths", stats.getDeaths());
-            cfg.set("players." + id + ".stats.damageDealt", stats.getDamageDealt());
-            cfg.set("players." + id + ".stats.damageTaken", stats.getDamageTaken());
-            cfg.set("players." + id + ".stats.moneyEarned", stats.getMoneyEarned());
-            cfg.set("players." + id + ".stats.moneySpent", stats.getMoneySpent());
-            cfg.set("players." + id + ".stats.km", stats.getKilometersTraveled());
-            cfg.set("players." + id + ".stats.time", stats.getTimeOnline());
-            cfg.set("players." + id + ".lastChallengeReset", data.getLastChallengeReset());
-            for (Skill s : Skill.values()) {
-                cfg.set("players." + id + ".skills." + s.name(), data.getSkillLevel(s));
+        try {
+            if (storage != null) {
+                storage.save(players);
             }
-            for (Map.Entry<ChallengeType, Double> e : data.getChallengeProgress().entrySet()) {
-                cfg.set("players." + id + ".challenges." + e.getKey().name(), e.getValue());
-            }
+        } catch (Exception e) {
+            getLogger().severe("Failed to save data: " + e.getMessage());
         }
-        saveConfig();
     }
 
     private ItemStack createItem(Material mat, String name, String... lore) {
@@ -649,14 +650,37 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         return economy != null;
     }
 
+    private void setupStorage() {
+        FileConfiguration cfg = getConfig();
+        String type = cfg.getString("storage.type", "sqlite");
+        try {
+            if (type.equalsIgnoreCase("mysql")) {
+                String host = cfg.getString("storage.mysql.host", "localhost");
+                int port = cfg.getInt("storage.mysql.port", 3306);
+                String db = cfg.getString("storage.mysql.database", "levelsx");
+                String user = cfg.getString("storage.mysql.user", "root");
+                String pass = cfg.getString("storage.mysql.password", "");
+                storage = new MySqlStorage(host, port, db, user, pass);
+            } else {
+                storage = new SqliteStorage(getDataFolder());
+            }
+        } catch (Exception e) {
+            getLogger().severe("Failed to init storage: " + e.getMessage());
+        }
+    }
+
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return Arrays.asList("help", "admin", "leaderboard", "stats", "challenges", "spend", "scoreboard")
+            return Arrays.asList("help", "admin", "leaderboard", "stats", "challenges", "spend", "scoreboard", "backup")
                     .stream().filter(s -> s.startsWith(args[0].toLowerCase())).collect(Collectors.toList());
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("leaderboard")) {
             return Arrays.asList("kills", "mobkills", "deaths", "damage", "distance")
+                    .stream().filter(s -> s.startsWith(args[1].toLowerCase())).collect(Collectors.toList());
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("backup")) {
+            return Arrays.asList("sql", "sqlite")
                     .stream().filter(s -> s.startsWith(args[1].toLowerCase())).collect(Collectors.toList());
         }
         return Collections.emptyList();

@@ -12,7 +12,9 @@ minecraft spigot plugin gaan maken voor versie 1.16 tot 1.21 met de volgende fun
 - Scoreboard om level en XP progressie te tonen (aan/uit te zetten met /skill scoreboard)
 - Integratie met Vault voor het uitkeren van geldbeloningen
 - Admin GUI laat het selecteren van item rewards per 20 levels toe en het instellen van een level cap
-- Skills: damage reduction, healing, lifesteal, damage, lung capacity, 
+- Skills: damage reduction, healing, lifesteal, damage, lung capacity,
+- Opslag van spelersdata via SQLite of MySQL (config `storage`)
+- /skill backup <sql|sqlite> om handmatig een backup te maken
 
 voor commands:
 /Skill opent skill GUI voor speler

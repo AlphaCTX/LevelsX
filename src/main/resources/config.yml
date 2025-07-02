@@ -39,9 +39,21 @@ challengeRewards:
   daily:
     xp: 20
     money: 0.0
+    types:
+      MOB_KILLS: {xp: 20, money: 0.0}
+      DAMAGE_TAKEN: {xp: 20, money: 0.0}
+      MONEY_EARNED: {xp: 20, money: 0.0}
+      MONEY_SPENT: {xp: 20, money: 0.0}
+      KILOMETERS_TRAVELED: {xp: 20, money: 0.0}
   weekly:
     xp: 50
     money: 0.0
+    types:
+      MOB_KILLS: {xp: 50, money: 0.0}
+      DAMAGE_TAKEN: {xp: 50, money: 0.0}
+      MONEY_EARNED: {xp: 50, money: 0.0}
+      MONEY_SPENT: {xp: 50, money: 0.0}
+      KILOMETERS_TRAVELED: {xp: 50, money: 0.0}
 
 # --- Kill Rewards ---
 killRewards:
@@ -53,3 +65,16 @@ killRewards:
     enabled: true
     xp: 25
     money: 0.0
+
+# --- Scoreboard Defaults ---
+scoreboard:
+  order: [LEVEL, BALANCE, XP, PROGRESS, KILLS, MOB_KILLS, DEATHS, KM]
+  enabled:
+    LEVEL: true
+    BALANCE: false
+    XP: true
+    PROGRESS: true
+    KILLS: false
+    MOB_KILLS: false
+    DEATHS: false
+    KM: false

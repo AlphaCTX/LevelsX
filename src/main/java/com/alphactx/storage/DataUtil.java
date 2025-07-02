@@ -4,9 +4,11 @@ import com.alphactx.model.ChallengeType;
 import com.alphactx.model.PlayerData;
 import com.alphactx.model.Skill;
 import com.alphactx.model.Stats;
+import com.alphactx.model.ScoreField;
 import org.bukkit.configuration.file.FileConfiguration;
 
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public final class DataUtil {
     private DataUtil() {}
@@ -30,6 +32,20 @@ public final class DataUtil {
         stats.setTimeOnline(cfg.getLong("stats.time", 0));
         data.setLastBalance(cfg.getDouble("lastBalance", 0));
         data.setScoreboardEnabled(cfg.getBoolean("scoreboardEnabled", false));
+        data.setShowBalance(cfg.getBoolean("showBalance", false));
+        List<String> order = cfg.getStringList("board.order");
+        if (order.isEmpty()) {
+            order = Arrays.stream(ScoreField.values()).map(Enum::name).collect(Collectors.toList());
+        }
+        data.getBoardOrder().clear();
+        for (String s : order) {
+            try { data.getBoardOrder().add(ScoreField.valueOf(s)); } catch (IllegalArgumentException ignored) {}
+        }
+        for (ScoreField f : ScoreField.values()) {
+            boolean def = f == ScoreField.LEVEL || f == ScoreField.XP || f == ScoreField.PROGRESS;
+            if (f == ScoreField.BALANCE) def = data.isShowBalance();
+            data.setFieldEnabled(f, cfg.getBoolean("board.enabled."+f.name(), def));
+        }
         data.loadLastDailyReset(cfg.getLong("lastDailyReset", System.currentTimeMillis()));
         data.loadLastWeeklyReset(cfg.getLong("lastWeeklyReset", System.currentTimeMillis()));
         for (ChallengeType ct : ChallengeType.values()) {
@@ -57,6 +73,11 @@ public final class DataUtil {
         cfg.set("stats.time", stats.getTimeOnline());
         cfg.set("lastBalance", data.getLastBalance());
         cfg.set("scoreboardEnabled", data.isScoreboardEnabled());
+        cfg.set("showBalance", data.isFieldEnabled(ScoreField.BALANCE));
+        cfg.set("board.order", data.getBoardOrder().stream().map(Enum::name).collect(Collectors.toList()));
+        for (ScoreField f : ScoreField.values()) {
+            cfg.set("board.enabled."+f.name(), data.isFieldEnabled(f));
+        }
         cfg.set("lastDailyReset", data.getLastDailyReset());
         cfg.set("lastWeeklyReset", data.getLastWeeklyReset());
         for (Map.Entry<ChallengeType, Double> e : data.getDailyProgress().entrySet()) {

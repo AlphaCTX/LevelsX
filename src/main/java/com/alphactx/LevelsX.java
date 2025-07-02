@@ -4,6 +4,7 @@ import com.alphactx.model.PlayerData;
 import com.alphactx.model.Skill;
 import com.alphactx.model.Stats;
 import com.alphactx.model.ChallengeType;
+import com.alphactx.model.ScoreField;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -266,10 +267,36 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         if (!(event.getWhoClicked() instanceof Player)) return;
         Player player = (Player) event.getWhoClicked();
         String title = event.getView().getTitle();
-        event.setCancelled(true);
+
+        // Determine if this is one of our GUIs
+        boolean custom = title.equals("Skills") || title.equals("Admin Menu") || title.equals("Level Config") ||
+                title.equals("Challenge Config") || title.startsWith("Challenge ") || title.equals("Kill Config") ||
+                title.equals("Stats") || title.equals("Daily") || title.equals("Weekly") ||
+                title.equals("Config") || title.equals("Menu");
+
+        if (custom) {
+            // cancel if clicking the top inventory or using shift-click
+            if (event.getClickedInventory() != player.getInventory() || event.isShiftClick()) {
+                event.setCancelled(true);
+            }
+        } else {
+            return;
+        }
 
         // Haal één keer ClickType op
         ClickType click = event.getClick();
+
+        // MAIN MENU
+        if (title.equals("Menu")) {
+            switch (event.getRawSlot()) {
+                case 0: openSkillGui(player); break;
+                case 1: openDailyGui(player); break;
+                case 2: openWeeklyGui(player); break;
+                case 3: openStatsGui(player); break;
+                case 4: openConfigGui(player); break;
+            }
+            return;
+        }
 
         // SKILLS GUI
         if (title.equals("Skills")) {
@@ -280,41 +307,44 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 data.levelSkill(skill);
                 updateLungCapacity(player, data);
                 openSkillGui(player);
-            } else if (slot == 6) {
-                openChallengesGui(player);
             } else if (slot == 7) {
-                openStatsGui(player);
+                openMainGui(player);
             }
             return;
         }
 
-        // ADMIN GUI
-        if (title.equals("Admin")) {
-            int rewardSlots = levelCap / 20;
-            int extra = 6;
-            int capSlot = event.getInventory().getSize() - (extra + 1);
-            int moneySlot = capSlot + 1;
-            int dailySlot = capSlot + 2;
-            int weeklySlot = capSlot + 3;
-            int mobSlot = capSlot + 4;
-            int playerSlot = capSlot + 5;
-            int backSlot = capSlot + 6;
+        // ADMIN MENUS
+        if (title.equals("Admin Menu")) {
+            switch (event.getRawSlot()) {
+                case 0: openLevelConfigGui(player); break;
+                case 1: openChallengeConfigGui(player); break;
+                case 2: openKillConfigGui(player); break;
+                case 8: player.closeInventory(); break;
+            }
+            return;
+        }
 
-            // PENDING REWARD
-            if (pendingRewardLevel.containsKey(player.getUniqueId())
-                    && event.getClickedInventory() == player.getInventory()) {
+        if (title.equals("Level Config")) {
+            int rewardSlots = levelCap / 20;
+            int extra = 4;
+            int moneySlot = event.getInventory().getSize() - extra;
+            int itemSlot = moneySlot + 1;
+            int capSlot = itemSlot + 1;
+            int backSlot = capSlot + 1;
+
+            if (pendingRewardLevel.containsKey(player.getUniqueId()) && event.getClickedInventory() == player.getInventory()) {
                 ItemStack current = event.getCurrentItem();
                 if (current != null && !current.getType().isAir()) {
                     int lvl = pendingRewardLevel.remove(player.getUniqueId());
-                    getConfig().set("itemRewards." + lvl, current.getType().name());
+                    if (lvl == -1) getConfig().set("itemReward", current.getType().name());
+                    else getConfig().set("itemRewards." + lvl, current.getType().name());
                     saveConfig();
-                    msg(player, "Set reward for level " + lvl + " to " + current.getType());
-                    openAdminGui(player);
+                    msg(player, "Set reward for " + (lvl==-1?"default":("level " + lvl)) + " to " + current.getType());
+                    openLevelConfigGui(player);
                 }
                 return;
             }
 
-            // LEVEL REWARD SLOTS
             if (event.getRawSlot() >= 0 && event.getRawSlot() < rewardSlots) {
                 int level = (event.getRawSlot() + 1) * 20;
                 pendingRewardLevel.put(player.getUniqueId(), level);
@@ -322,121 +352,167 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 return;
             }
 
-            // MONEY REWARD
             if (event.getRawSlot() == moneySlot) {
                 double money = getConfig().getDouble("moneyReward", 100.0);
-                if (click == ClickType.LEFT) {
-                    money = Math.max(0, money - 10);
-                } else if (click == ClickType.RIGHT) {
-                    money += 10;
-                }
+                if (click == ClickType.LEFT) money = Math.max(0, money - (click.isShiftClick()?10:1));
+                else if (click == ClickType.RIGHT) money += click.isShiftClick()?10:1;
                 getConfig().set("moneyReward", money);
                 saveConfig();
-                openAdminGui(player);
+                openLevelConfigGui(player);
                 return;
             }
-
-            // LEVEL CAP
+            if (event.getRawSlot() == itemSlot) {
+                pendingRewardLevel.put(player.getUniqueId(), -1);
+                msg(player, "Click an item in your inventory to set the default reward item");
+                return;
+            }
             if (event.getRawSlot() == capSlot) {
-                if (click == ClickType.LEFT) {
-                    levelCap = Math.max(1, levelCap - 10);
-                } else if (click == ClickType.RIGHT) {
-                    levelCap = Math.min(1000, levelCap + 10);
-                }
+                if (click == ClickType.LEFT) levelCap = Math.max(1, levelCap - 10);
+                else if (click == ClickType.RIGHT) levelCap = Math.min(1000, levelCap + 10);
                 getConfig().set("levelCap", levelCap);
                 saveConfig();
-                openAdminGui(player);
+                openLevelConfigGui(player);
                 return;
             }
+            if (event.getRawSlot() == backSlot) { openAdminMenu(player); }
+            return;
+        }
 
-            // DAILY CHALLENGE REWARD
-            if (event.getRawSlot() == dailySlot) {
-                int xp = getConfig().getInt("challengeRewards.daily.xp", 20);
-                double money = getConfig().getDouble("challengeRewards.daily.money", 0.0);
-                if (click == ClickType.LEFT) {
-                    xp = Math.max(0, xp + (click.isShiftClick() ? -10 : 10));
-                    getConfig().set("challengeRewards.daily.xp", xp);
-                } else if (click == ClickType.RIGHT) {
-                    money = Math.max(0, money + (click.isShiftClick() ? -10 : 10));
-                    getConfig().set("challengeRewards.daily.money", money);
-                }
+        if (title.equals("Challenge Config")) {
+            if (event.getRawSlot() < ChallengeType.values().length) {
+                openChallengeTypeGui(player, ChallengeType.values()[event.getRawSlot()]);
+            } else if (event.getRawSlot() == 8) {
+                openAdminMenu(player);
+            }
+            return;
+        }
+
+        if (title.startsWith("Challenge ")) {
+            ChallengeType type = ChallengeType.valueOf(title.substring(10));
+            String base = "challengeRewards.";
+            if (event.getRawSlot() == 0) {
+                int xp = getConfig().getInt(base+"daily.types."+type.name()+".xp", getConfig().getInt(base+"daily.xp",20));
+                xp = Math.max(0, xp + (click == ClickType.LEFT?-1:1)*(click.isShiftClick()?10:1));
+                getConfig().set(base+"daily.types."+type.name()+".xp", xp);
                 saveConfig();
-                openAdminGui(player);
-                return;
-            }
-
-            // WEEKLY CHALLENGE REWARD
-            if (event.getRawSlot() == weeklySlot) {
-                int xp = getConfig().getInt("challengeRewards.weekly.xp", 50);
-                double money = getConfig().getDouble("challengeRewards.weekly.money", 0.0);
-                if (click == ClickType.LEFT) {
-                    xp = Math.max(0, xp + (click.isShiftClick() ? -10 : 10));
-                    getConfig().set("challengeRewards.weekly.xp", xp);
-                } else if (click == ClickType.RIGHT) {
-                    money = Math.max(0, money + (click.isShiftClick() ? -10 : 10));
-                    getConfig().set("challengeRewards.weekly.money", money);
-                }
+                openChallengeTypeGui(player,type);
+            } else if (event.getRawSlot() == 1) {
+                double money = getConfig().getDouble(base+"daily.types."+type.name()+".money", getConfig().getDouble(base+"daily.money",0.0));
+                money = Math.max(0, money + (click == ClickType.LEFT?-1:1)*(click.isShiftClick()?10:1));
+                getConfig().set(base+"daily.types."+type.name()+".money", money);
                 saveConfig();
-                openAdminGui(player);
-                return;
-            }
-
-            // MOB KILL REWARD
-            if (event.getRawSlot() == mobSlot) {
-                boolean enabled = getConfig().getBoolean("killRewards.mobs.enabled", true);
-                int xp = getConfig().getInt("killRewards.mobs.xp", 10);
-                double money = getConfig().getDouble("killRewards.mobs.money", 0.0);
-                if (click == ClickType.MIDDLE) {
-                    enabled = !enabled;
-                    getConfig().set("killRewards.mobs.enabled", enabled);
-                } else if (click == ClickType.LEFT) {
-                    xp = Math.max(0, xp + (click.isShiftClick() ? -1 : 1));
-                    getConfig().set("killRewards.mobs.xp", xp);
-                } else if (click == ClickType.RIGHT) {
-                    money = Math.max(0, money + (click.isShiftClick() ? -1 : 1));
-                    getConfig().set("killRewards.mobs.money", money);
-                }
+                openChallengeTypeGui(player,type);
+            } else if (event.getRawSlot() == 3) {
+                int xp = getConfig().getInt(base+"weekly.types."+type.name()+".xp", getConfig().getInt(base+"weekly.xp",50));
+                xp = Math.max(0, xp + (click == ClickType.LEFT?-1:1)*(click.isShiftClick()?10:1));
+                getConfig().set(base+"weekly.types."+type.name()+".xp", xp);
                 saveConfig();
-                openAdminGui(player);
-                return;
-            }
-
-            // PLAYER KILL REWARD
-            if (event.getRawSlot() == playerSlot) {
-                boolean enabled = getConfig().getBoolean("killRewards.players.enabled", true);
-                int xp = getConfig().getInt("killRewards.players.xp", 25);
-                double money = getConfig().getDouble("killRewards.players.money", 0.0);
-                if (click == ClickType.MIDDLE) {
-                    enabled = !enabled;
-                    getConfig().set("killRewards.players.enabled", enabled);
-                } else if (click == ClickType.LEFT) {
-                    xp = Math.max(0, xp + (click.isShiftClick() ? -1 : 1));
-                    getConfig().set("killRewards.players.xp", xp);
-                } else if (click == ClickType.RIGHT) {
-                    money = Math.max(0, money + (click.isShiftClick() ? -1 : 1));
-                    getConfig().set("killRewards.players.money", money);
-                }
+                openChallengeTypeGui(player,type);
+            } else if (event.getRawSlot() == 4) {
+                double money = getConfig().getDouble(base+"weekly.types."+type.name()+".money", getConfig().getDouble(base+"weekly.money",0.0));
+                money = Math.max(0, money + (click == ClickType.LEFT?-1:1)*(click.isShiftClick()?10:1));
+                getConfig().set(base+"weekly.types."+type.name()+".money", money);
                 saveConfig();
-                openAdminGui(player);
-                return;
+                openChallengeTypeGui(player,type);
+            } else if (event.getRawSlot() == 8) {
+                openChallengeConfigGui(player);
             }
+            return;
+        }
 
-            // BACK BUTTON
-            if (event.getRawSlot() == backSlot) {
-                openSkillGui(player);
+        if (title.equals("Kill Config")) {
+            if (event.getRawSlot() == 0) {
+                int xp = getConfig().getInt("killRewards.players.xp",25);
+                xp = Math.max(0, xp + (click == ClickType.LEFT?-1:1)*(click.isShiftClick()?10:1));
+                getConfig().set("killRewards.players.xp", xp);
+                saveConfig();
+                openKillConfigGui(player);
+                return;
+            } else if (event.getRawSlot() == 1) {
+                double money = getConfig().getDouble("killRewards.players.money",0.0);
+                money = Math.max(0, money + (click == ClickType.LEFT?-1:1)*(click.isShiftClick()?10:1));
+                getConfig().set("killRewards.players.money", money);
+                saveConfig();
+                openKillConfigGui(player);
+                return;
+            } else if (event.getRawSlot() == 3) {
+                int xp = getConfig().getInt("killRewards.mobs.xp",10);
+                xp = Math.max(0, xp + (click == ClickType.LEFT?-1:1)*(click.isShiftClick()?10:1));
+                getConfig().set("killRewards.mobs.xp", xp);
+                saveConfig();
+                openKillConfigGui(player);
+                return;
+            } else if (event.getRawSlot() == 4) {
+                double money = getConfig().getDouble("killRewards.mobs.money",0.0);
+                money = Math.max(0, money + (click == ClickType.LEFT?-1:1)*(click.isShiftClick()?10:1));
+                getConfig().set("killRewards.mobs.money", money);
+                saveConfig();
+                openKillConfigGui(player);
+                return;
+            } else if (event.getRawSlot() == 8) {
+                openAdminMenu(player);
             }
             return;
         }
 
         // STATS GUI
         if (title.equals("Stats")) {
-            if (event.getRawSlot() == 26) openSkillGui(player);
+            if (event.getRawSlot() == 26) openMainGui(player);
             return;
         }
 
-        // CHALLENGES GUI
-        if (title.equals("Challenges")) {
-            if (event.getRawSlot() == 17) openSkillGui(player);
+        // DAILY GUI
+        if (title.equals("Daily")) {
+            if (event.getRawSlot() == 17) openMainGui(player);
+            return;
+        }
+
+        // WEEKLY GUI
+        if (title.equals("Weekly")) {
+            if (event.getRawSlot() == 17) openMainGui(player);
+            return;
+        }
+
+        // SCOREBOARD GUI
+        if (title.equals("Scoreboard")) {
+            PlayerData data = getData(player.getUniqueId());
+            int back = event.getInventory().getSize()-1;
+            if (event.getRawSlot() == back) { openConfigGui(player); return; }
+            int index = event.getRawSlot();
+            if (index >=0 && index < data.getBoardOrder().size()) {
+                ScoreField f = data.getBoardOrder().get(index);
+                if (click.isShiftClick()) {
+                    if (click == ClickType.LEFT && index > 0) Collections.swap(data.getBoardOrder(), index, index-1);
+                    else if (click == ClickType.RIGHT && index < data.getBoardOrder().size()-1) Collections.swap(data.getBoardOrder(), index, index+1);
+                } else {
+                    boolean en = data.isFieldEnabled(f);
+                    data.setFieldEnabled(f, !en);
+                    if (f == ScoreField.BALANCE) data.setShowBalance(!en);
+                }
+                openScoreboardGui(player);
+                updateScoreboard(player);
+            }
+            return;
+        }
+
+        // CONFIG GUI
+        if (title.equals("Config")) {
+            PlayerData data = getData(player.getUniqueId());
+            if (event.getRawSlot() == 0) {
+                data.setScoreboardEnabled(!data.isScoreboardEnabled());
+                if (data.isScoreboardEnabled()) updateScoreboard(player); else player.setScoreboard(scoreboardManager.getNewScoreboard());
+                openConfigGui(player);
+            } else if (event.getRawSlot() == 1) {
+                boolean en = data.isFieldEnabled(ScoreField.BALANCE);
+                data.setFieldEnabled(ScoreField.BALANCE, !en);
+                data.setShowBalance(!en);
+                updateScoreboard(player);
+                openConfigGui(player);
+            } else if (event.getRawSlot() == 2) {
+                openScoreboardGui(player);
+            } else if (event.getRawSlot() == 8) {
+                openMainGui(player);
+            }
         }
     }
 
@@ -471,29 +547,31 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         }
     }
 
-    private void openSkillGui(Player player) {
-        Inventory inv = Bukkit.createInventory(player, 9, "Skills");
-        PlayerData data = getData(player.getUniqueId());
-        int slot = 0;
-        for (Skill skill : Skill.values()) {
-            ItemStack item = new ItemStack(Material.BOOK);
-            ItemMeta meta = item.getItemMeta();
-            meta.setDisplayName(skill.name() + " Lv." + data.getSkillLevel(skill));
-            item.setItemMeta(meta);
-            inv.setItem(slot++, item);
-        }
-        inv.setItem(6, createItem(Material.PAPER, "Challenges"));
-        inv.setItem(7, createItem(Material.BOOK, "View Stats"));
-        inv.setItem(8, createItem(Material.EXPERIENCE_BOTTLE, "Skill Points: " + data.getSkillPoints()));
+    private void openMainGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 9, "Menu");
+        inv.setItem(0, createItem(Material.ENCHANTED_BOOK, "Skills"));
+        inv.setItem(1, createItem(Material.PAPER, "Daily"));
+        inv.setItem(2, createItem(Material.MAP, "Weekly"));
+        inv.setItem(3, createItem(Material.BOOK, "Stats"));
+        inv.setItem(4, createItem(Material.REDSTONE_COMPARATOR, "Config"));
         player.openInventory(inv);
     }
 
-    private void openAdminGui(Player player) {
+    private void openAdminMenu(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 9, "Admin Menu");
+        inv.setItem(0, createItem(Material.EXPERIENCE_BOTTLE, "Level Config"));
+        inv.setItem(1, createItem(Material.PAPER, "Challenges Config"));
+        inv.setItem(2, createItem(Material.DIAMOND_SWORD, "Kill Config"));
+        inv.setItem(8, createItem(Material.BARRIER, "Close"));
+        player.openInventory(inv);
+    }
+
+    private void openLevelConfigGui(Player player) {
         int rewardSlots = levelCap / 20;
-        int extra = 6;
-        int total = rewardSlots + extra + 1;
+        int extra = 4;
+        int total = rewardSlots + extra;
         int size = ((total + 8) / 9) * 9;
-        Inventory inv = Bukkit.createInventory(player, size, "Admin");
+        Inventory inv = Bukkit.createInventory(player, size, "Level Config");
 
         for (int i = 0; i < rewardSlots; i++) {
             int lvl = (i + 1) * 20;
@@ -506,49 +584,124 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             inv.setItem(i, it);
         }
 
-        int capSlot = size - (extra + 1);
+        int moneySlot = size - extra;
+        int itemSlot = moneySlot + 1;
+        int capSlot = itemSlot + 1;
+        int backSlot = capSlot + 1;
+
+        inv.setItem(moneySlot, createItem(Material.GOLD_INGOT, "Money per level: $" + getConfig().getDouble("moneyReward", 100.0)));
+        inv.setItem(itemSlot, createItem(Material.CHEST, "Item reward: " + getConfig().getString("itemReward", "DIAMOND")));
         inv.setItem(capSlot, createItem(Material.EXPERIENCE_BOTTLE, "Level Cap: " + levelCap));
-        inv.setItem(capSlot + 1, createItem(Material.GOLD_INGOT, "Money reward: $"
-                + getConfig().getDouble("moneyReward", 100.0)));
-        inv.setItem(capSlot + 2, createItem(Material.PAPER, "Daily reward: "
-                + getConfig().getInt("challengeRewards.daily.xp",20) + " XP, $"
-                + getConfig().getDouble("challengeRewards.daily.money",0.0)));
-        inv.setItem(capSlot + 3, createItem(Material.MAP, "Weekly reward: "
-                + getConfig().getInt("challengeRewards.weekly.xp",50) + " XP, $"
-                + getConfig().getDouble("challengeRewards.weekly.money",0.0)));
-        inv.setItem(capSlot + 4, createItem(Material.ZOMBIE_HEAD, "Mob kill: "
-                + (getConfig().getBoolean("killRewards.mobs.enabled", true) ? "on" : "off") + " "
-                + getConfig().getInt("killRewards.mobs.xp",10) + " XP, $"
-                + getConfig().getDouble("killRewards.mobs.money",0.0)));
-        inv.setItem(capSlot + 5, createItem(Material.PLAYER_HEAD, "Player kill: "
-                + (getConfig().getBoolean("killRewards.players.enabled", true) ? "on" : "off") + " "
-                + getConfig().getInt("killRewards.players.xp",25) + " XP, $"
-                + getConfig().getDouble("killRewards.players.money",0.0)));
-        inv.setItem(capSlot + 6, createItem(Material.ARROW, "Back"));
+        inv.setItem(backSlot, createItem(Material.ARROW, "Back"));
 
         player.openInventory(inv);
     }
 
-    private void openChallengesGui(Player player) {
-        Inventory inv = Bukkit.createInventory(player, 18, "Challenges");
+    private void openChallengeConfigGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 9, "Challenge Config");
+        int slot = 0;
+        for (ChallengeType type : ChallengeType.values()) {
+            inv.setItem(slot++, createItem(Material.PAPER, type.name()));
+        }
+        inv.setItem(8, createItem(Material.ARROW, "Back"));
+        player.openInventory(inv);
+    }
+
+    private void openChallengeTypeGui(Player player, ChallengeType type) {
+        Inventory inv = Bukkit.createInventory(player, 9, "Challenge " + type.name());
+        String base = "challengeRewards.";
+        int dXp = getConfig().getInt(base + "daily.types." + type.name() + ".xp", getConfig().getInt(base + "daily.xp", 20));
+        double dMoney = getConfig().getDouble(base + "daily.types." + type.name() + ".money", getConfig().getDouble(base + "daily.money", 0.0));
+        int wXp = getConfig().getInt(base + "weekly.types." + type.name() + ".xp", getConfig().getInt(base + "weekly.xp", 50));
+        double wMoney = getConfig().getDouble(base + "weekly.types." + type.name() + ".money", getConfig().getDouble(base + "weekly.money", 0.0));
+        inv.setItem(0, createItem(Material.EXPERIENCE_BOTTLE, "Daily XP: " + dXp));
+        inv.setItem(1, createItem(Material.GOLD_INGOT, "Daily Money: $" + dMoney));
+        inv.setItem(3, createItem(Material.EXPERIENCE_BOTTLE, "Weekly XP: " + wXp));
+        inv.setItem(4, createItem(Material.GOLD_INGOT, "Weekly Money: $" + wMoney));
+        inv.setItem(8, createItem(Material.ARROW, "Back"));
+        player.openInventory(inv);
+    }
+
+    private void openKillConfigGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 9, "Kill Config");
+        inv.setItem(0, createItem(Material.EXPERIENCE_BOTTLE, "Player XP: " + getConfig().getInt("killRewards.players.xp",25)));
+        inv.setItem(1, createItem(Material.GOLD_INGOT, "Player Money: $" + getConfig().getDouble("killRewards.players.money",0.0)));
+        inv.setItem(3, createItem(Material.EXPERIENCE_BOTTLE, "Mob XP: " + getConfig().getInt("killRewards.mobs.xp",10)));
+        inv.setItem(4, createItem(Material.GOLD_INGOT, "Mob Money: $" + getConfig().getDouble("killRewards.mobs.money",0.0)));
+        inv.setItem(8, createItem(Material.ARROW, "Back"));
+        player.openInventory(inv);
+    }
+
+    private void openDailyGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 18, "Daily");
         PlayerData data = getData(player.getUniqueId());
         int i = 0;
         for (ChallengeType type : activeDaily) {
             double prog = data.getDailyProgress().get(type);
             double goal = challengeGoals.get(type);
-            inv.setItem(i++, createItem(Material.PAPER, "Daily " + type.name(),
-                    String.format("%.1f/%.1f", prog, goal)));
-        }
-        i = 9;
-        for (ChallengeType type : activeWeekly) {
-            double prog = data.getWeeklyProgress().get(type);
-            double goal = challengeGoals.get(type);
-            inv.setItem(i++, createItem(Material.MAP, "Weekly " + type.name(),
-                    String.format("%.1f/%.1f", prog, goal)));
+            int xp = getConfig().getInt("challengeRewards.daily.types." + type.name() + ".xp", getConfig().getInt("challengeRewards.daily.xp", 20));
+            double money = getConfig().getDouble("challengeRewards.daily.types." + type.name() + ".money", getConfig().getDouble("challengeRewards.daily.money", 0.0));
+            inv.setItem(i++, createItem(Material.PAPER, type.name(), String.format("%.1f/%.1f", prog, goal), "Reward: " + xp + " XP, $" + money));
         }
         inv.setItem(17, createItem(Material.ARROW, "Back"));
         player.openInventory(inv);
     }
+
+    private void openWeeklyGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 18, "Weekly");
+        PlayerData data = getData(player.getUniqueId());
+        int i = 0;
+        for (ChallengeType type : activeWeekly) {
+            double prog = data.getWeeklyProgress().get(type);
+            double goal = challengeGoals.get(type);
+            int xp = getConfig().getInt("challengeRewards.weekly.types." + type.name() + ".xp", getConfig().getInt("challengeRewards.weekly.xp", 50));
+            double money = getConfig().getDouble("challengeRewards.weekly.types." + type.name() + ".money", getConfig().getDouble("challengeRewards.weekly.money", 0.0));
+            inv.setItem(i++, createItem(Material.MAP, type.name(), String.format("%.1f/%.1f", prog, goal), "Reward: " + xp + " XP, $" + money));
+        }
+        inv.setItem(17, createItem(Material.ARROW, "Back"));
+        player.openInventory(inv);
+    }
+
+    private void openSkillGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 9, "Skills");
+        PlayerData data = getData(player.getUniqueId());
+        int slot = 0;
+        for (Skill skill : Skill.values()) {
+            int lvl = data.getSkillLevel(skill);
+            List<String> lore = new ArrayList<>();
+            lore.add("Level " + lvl);
+            lore.add(getSkillInfo(skill, lvl));
+            lore.add("Max 10");
+            inv.setItem(slot++, createItem(Material.BOOK, skill.name(), lore.toArray(new String[0])));
+        }
+        inv.setItem(7, createItem(Material.ARROW, "Back"));
+        inv.setItem(8, createItem(Material.EXPERIENCE_BOTTLE, "Skill Points: " + data.getSkillPoints()));
+        player.openInventory(inv);
+    }
+
+    private void openConfigGui(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 9, "Config");
+        PlayerData data = getData(player.getUniqueId());
+        inv.setItem(0, createItem(Material.COMPARATOR, "Scoreboard", data.isScoreboardEnabled()?"ON":"OFF"));
+        inv.setItem(1, createItem(Material.EMERALD, "Show Balance", data.isFieldEnabled(ScoreField.BALANCE)?"ON":"OFF"));
+        inv.setItem(2, createItem(Material.PAPER, "Scoreboard Order"));
+        inv.setItem(8, createItem(Material.ARROW, "Back"));
+        player.openInventory(inv);
+    }
+
+    private void openScoreboardGui(Player player) {
+        PlayerData data = getData(player.getUniqueId());
+        int size = ((ScoreField.values().length + 1) / 9 + 1) * 9;
+        Inventory inv = Bukkit.createInventory(player, size, "Scoreboard");
+        int slot = 0;
+        for (ScoreField f : data.getBoardOrder()) {
+            Material m = data.isFieldEnabled(f) ? Material.LIME_WOOL : Material.RED_WOOL;
+            inv.setItem(slot++, createItem(m, f.getLabel()));
+        }
+        inv.setItem(size-1, createItem(Material.ARROW, "Back"));
+        player.openInventory(inv);
+    }
+
 
     private void openStatsGui(Player player) {
         Inventory inv = Bukkit.createInventory(player, 27, "Stats");
@@ -589,16 +742,16 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         double goal = challengeGoals.getOrDefault(type, Double.MAX_VALUE);
         if (prog >= goal) {
             msg(player, (daily ? "Daily" : "Weekly") + " challenge completed: " + type.name().toLowerCase());
-            distributeChallengeReward(player, data, daily);
+            distributeChallengeReward(player, data, type, daily);
             if (daily) data.getDailyProgress().put(type, goal);
             else     data.getWeeklyProgress().put(type, goal);
         }
     }
 
-    private void distributeChallengeReward(Player player, PlayerData data, boolean daily) {
-        int xp = getConfig().getInt(daily ? "challengeRewards.daily.xp" : "challengeRewards.weekly.xp",
-                                   daily ? 20 : 50);
-        double money = getConfig().getDouble(daily ? "challengeRewards.daily.money" : "challengeRewards.weekly.money", 0.0);
+    private void distributeChallengeReward(Player player, PlayerData data, ChallengeType type, boolean daily) {
+        String path = "challengeRewards." + (daily?"daily":"weekly") + ".types." + type.name();
+        int xp = getConfig().getInt(path + ".xp", getConfig().getInt("challengeRewards." + (daily?"daily":"weekly") + ".xp", daily?20:50));
+        double money = getConfig().getDouble(path + ".money", getConfig().getDouble("challengeRewards." + (daily?"daily":"weekly") + ".money", 0.0));
         if (xp > 0) awardXp(player, xp);
         if (money > 0) {
             economy.depositPlayer(player, money);
@@ -648,7 +801,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         }
         Player player = (Player) sender;
         if (args.length == 0) {
-            openSkillGui(player);
+            openMainGui(player);
             return true;
         }
         switch (args[0].toLowerCase()) {
@@ -664,7 +817,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 break;
             case "admin":
                 if (!player.hasPermission("skill.admin")) msg(player, "No permission");
-                else openAdminGui(player);
+                else openAdminMenu(player);
                 break;
             case "leaderboard":
                 showLeaderboard(player, args.length>1?args[1]:"kills");
@@ -673,7 +826,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 openStatsGui(player);
                 break;
             case "challenges":
-                openChallengesGui(player);
+                openDailyGui(player);
                 break;
             case "scoreboard":
                 toggleScoreboard(player);
@@ -776,6 +929,17 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         return bar.toString();
     }
 
+    private String getSkillInfo(Skill skill, int lvl) {
+        switch (skill) {
+            case DAMAGE: return "Damage +" + (lvl*5) + "%";
+            case DAMAGE_REDUCTION: return "Damage taken -" + (lvl*5) + "%";
+            case HEALING: return "Heal " + lvl + " hearts";
+            case LIFESTEAL: return "Lifesteal " + (lvl*5) + "%";
+            case LUNG_CAPACITY: return "+" + lvl + "s underwater";
+            default: return "";
+        }
+    }
+
     private void updateScoreboard(Player player) {
         PlayerData data = getData(player.getUniqueId());
         if (!data.isScoreboardEnabled()) return;
@@ -783,12 +947,38 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         Objective obj = board.registerNewObjective("levelsx","dummy",ChatColor.GREEN+"LevelsX");
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
         int needed = data.getLevel()*100;
-        obj.getScore(ChatColor.YELLOW+"Level: "+ChatColor.WHITE+data.getLevel()).setScore(4);
-        if (data.getLevel()>=levelCap) {
-            obj.getScore(ChatColor.AQUA+"MAX LEVEL").setScore(3);
-        } else {
-            obj.getScore(ChatColor.YELLOW+"XP: "+ChatColor.WHITE+data.getXp()+"/"+needed).setScore(3);
-            obj.getScore(createBar((double)data.getXp()/needed)).setScore(2);
+        int line = data.getBoardOrder().size();
+        Stats stats = data.getStats();
+        for (ScoreField f : data.getBoardOrder()) {
+            if (!data.isFieldEnabled(f)) continue;
+            switch (f) {
+                case LEVEL:
+                    obj.getScore(ChatColor.YELLOW+"Level: "+ChatColor.WHITE+data.getLevel()).setScore(line--);
+                    break;
+                case BALANCE:
+                    double bal = economy.getBalance(player);
+                    obj.getScore(ChatColor.GOLD+"Balance: "+ChatColor.WHITE+String.format("%.2f", bal)).setScore(line--);
+                    break;
+                case XP:
+                    if (data.getLevel()>=levelCap) obj.getScore(ChatColor.AQUA+"MAX LEVEL").setScore(line--);
+                    else obj.getScore(ChatColor.YELLOW+"XP: "+ChatColor.WHITE+data.getXp()+"/"+needed).setScore(line--);
+                    break;
+                case PROGRESS:
+                    if (data.getLevel()<levelCap) obj.getScore(createBar((double)data.getXp()/needed)).setScore(line--);
+                    break;
+                case KILLS:
+                    obj.getScore(ChatColor.RED+"Kills: "+ChatColor.WHITE+stats.getKills()).setScore(line--);
+                    break;
+                case MOB_KILLS:
+                    obj.getScore(ChatColor.RED+"Mob Kills: "+ChatColor.WHITE+stats.getMobKills()).setScore(line--);
+                    break;
+                case DEATHS:
+                    obj.getScore(ChatColor.GRAY+"Deaths: "+ChatColor.WHITE+stats.getDeaths()).setScore(line--);
+                    break;
+                case KM:
+                    obj.getScore(ChatColor.BLUE+"KM: "+ChatColor.WHITE+String.format("%.1f", stats.getKilometersTraveled())).setScore(line--);
+                    break;
+            }
         }
         player.setScoreboard(board);
     }

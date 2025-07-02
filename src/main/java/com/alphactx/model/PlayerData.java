@@ -39,7 +39,16 @@ public class PlayerData {
             dailyProgress.put(type, 0.0);
             weeklyProgress.put(type, 0.0);
         }
-        boardOrder.addAll(Arrays.asList(ScoreField.values()));
+        boardOrder.addAll(Arrays.asList(
+                ScoreField.LEVEL,
+                ScoreField.XP,
+                ScoreField.PROGRESS,
+                ScoreField.BALANCE,
+                ScoreField.KILLS,
+                ScoreField.MOB_KILLS,
+                ScoreField.DEATHS,
+                ScoreField.KM
+        ));
         for (ScoreField f : ScoreField.values()) {
             boolean def = f == ScoreField.LEVEL || f == ScoreField.XP || f == ScoreField.PROGRESS;
             boardEnabled.put(f, def);

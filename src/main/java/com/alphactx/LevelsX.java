@@ -275,8 +275,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 title.equals("Config") || title.equals("Menu");
 
         if (custom) {
-            // cancel if clicking the top inventory or using shift-click
-            if (event.getClickedInventory() != player.getInventory() || event.isShiftClick()) {
+            boolean picking = pendingRewardLevel.containsKey(player.getUniqueId());
+            if (!picking || event.getClickedInventory() != player.getInventory() || event.isShiftClick()) {
                 event.setCancelled(true);
             }
         } else {
@@ -481,14 +481,9 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             int index = event.getRawSlot();
             if (index >=0 && index < data.getBoardOrder().size()) {
                 ScoreField f = data.getBoardOrder().get(index);
-                if (click.isShiftClick()) {
-                    if (click == ClickType.LEFT && index > 0) Collections.swap(data.getBoardOrder(), index, index-1);
-                    else if (click == ClickType.RIGHT && index < data.getBoardOrder().size()-1) Collections.swap(data.getBoardOrder(), index, index+1);
-                } else {
-                    boolean en = data.isFieldEnabled(f);
-                    data.setFieldEnabled(f, !en);
-                    if (f == ScoreField.BALANCE) data.setShowBalance(!en);
-                }
+                boolean en = data.isFieldEnabled(f);
+                data.setFieldEnabled(f, !en);
+                if (f == ScoreField.BALANCE) data.setShowBalance(!en);
                 openScoreboardGui(player);
                 updateScoreboard(player);
             }
@@ -512,6 +507,23 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 openScoreboardGui(player);
             } else if (event.getRawSlot() == 8) {
                 openMainGui(player);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (!(event.getWhoClicked() instanceof Player)) return;
+        Player player = (Player) event.getWhoClicked();
+        String title = event.getView().getTitle();
+        boolean custom = title.equals("Skills") || title.equals("Admin Menu") || title.equals("Level Config") ||
+                title.equals("Challenge Config") || title.startsWith("Challenge") || title.equals("Kill Config") ||
+                title.equals("Stats") || title.equals("Daily") || title.equals("Weekly") ||
+                title.equals("Config") || title.equals("Menu") || title.equals("Scoreboard");
+        if (custom) {
+            boolean picking = pendingRewardLevel.containsKey(player.getUniqueId());
+            if (!picking || event.getRawSlots().stream().anyMatch(s -> s < event.getView().getTopInventory().getSize())) {
+                event.setCancelled(true);
             }
         }
     }
@@ -553,7 +565,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         inv.setItem(1, createItem(Material.PAPER, "Daily"));
         inv.setItem(2, createItem(Material.MAP, "Weekly"));
         inv.setItem(3, createItem(Material.BOOK, "Stats"));
-        inv.setItem(4, createItem(Material.REDSTONE_COMPARATOR, "Config"));
+        inv.setItem(4, createItem(Material.COMPARATOR, "Config"));
         player.openInventory(inv);
     }
 
@@ -684,7 +696,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         PlayerData data = getData(player.getUniqueId());
         inv.setItem(0, createItem(Material.COMPARATOR, "Scoreboard", data.isScoreboardEnabled()?"ON":"OFF"));
         inv.setItem(1, createItem(Material.EMERALD, "Show Balance", data.isFieldEnabled(ScoreField.BALANCE)?"ON":"OFF"));
-        inv.setItem(2, createItem(Material.PAPER, "Scoreboard Order"));
+        inv.setItem(2, createItem(Material.PAPER, "Scoreboard Fields"));
         inv.setItem(8, createItem(Material.ARROW, "Back"));
         player.openInventory(inv);
     }

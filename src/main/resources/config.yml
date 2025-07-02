@@ -68,7 +68,7 @@ killRewards:
 
 # --- Scoreboard Defaults ---
 scoreboard:
-  order: [LEVEL, BALANCE, XP, PROGRESS, KILLS, MOB_KILLS, DEATHS, KM]
+  order: [LEVEL, XP, PROGRESS, BALANCE, KILLS, MOB_KILLS, DEATHS, KM]
   enabled:
     LEVEL: true
     BALANCE: false

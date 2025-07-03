@@ -23,15 +23,22 @@ itemRewards: {}           # Multiple item rewards (format: ITEM_NAME: AMOUNT)
 
 # --- General Limits ---
 levelCap: 100             # Maximum achievable level
+autosave: 5               # Minutes between automatic data saves
 
 # --- Challenge Goals ---
-# Goals players must reach for extra challenges
-challengeGoals:
-  MOB_KILLS: 10    # Number of mobs to kill
-  DAMAGE_TAKEN: 500   # Amount of damage to receive
-  MONEY_EARNED: 1000  # Amount of money to earn
-  MONEY_SPENT: 1000  # Amount of money to spend
-  KILOMETERS_TRAVELED: 5     # Distance to travel in kilometers
+# Separate goals for daily and weekly challenges
+dailyGoals:
+  MOB_KILLS: 10
+  DAMAGE_TAKEN: 500
+  MONEY_EARNED: 1000
+  MONEY_SPENT: 1000
+  KILOMETERS_TRAVELED: 5
+weeklyGoals:
+  MOB_KILLS: 50
+  DAMAGE_TAKEN: 2500
+  MONEY_EARNED: 5000
+  MONEY_SPENT: 5000
+  KILOMETERS_TRAVELED: 25
 
 # --- Challenge Rewards ---
 # Rewards granted when completing challenges
@@ -39,9 +46,21 @@ challengeRewards:
   daily:
     xp: 20
     money: 0.0
+    types:
+      MOB_KILLS: {xp: 20, money: 0.0}
+      DAMAGE_TAKEN: {xp: 20, money: 0.0}
+      MONEY_EARNED: {xp: 20, money: 0.0}
+      MONEY_SPENT: {xp: 20, money: 0.0}
+      KILOMETERS_TRAVELED: {xp: 20, money: 0.0}
   weekly:
     xp: 50
     money: 0.0
+    types:
+      MOB_KILLS: {xp: 50, money: 0.0}
+      DAMAGE_TAKEN: {xp: 50, money: 0.0}
+      MONEY_EARNED: {xp: 50, money: 0.0}
+      MONEY_SPENT: {xp: 50, money: 0.0}
+      KILOMETERS_TRAVELED: {xp: 50, money: 0.0}
 
 # --- Kill Rewards ---
 killRewards:
@@ -56,4 +75,13 @@ killRewards:
 
 # --- Scoreboard Defaults ---
 scoreboard:
-  showBalance: false
+  order: [LEVEL, XP, PROGRESS, BALANCE, KILLS, MOB_KILLS, DEATHS, KM]
+  enabled:
+    LEVEL: true
+    BALANCE: false
+    XP: true
+    PROGRESS: true
+    KILLS: false
+    MOB_KILLS: false
+    DEATHS: false
+    KM: false

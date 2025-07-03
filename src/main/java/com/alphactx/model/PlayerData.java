@@ -1,10 +1,10 @@
 package com.alphactx.model;
 
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import com.alphactx.model.ChallengeType;
+import com.alphactx.model.ScoreField;
 
 /**
  * Stores player related data such as level, XP, skills and statistics.
@@ -27,6 +27,8 @@ public class PlayerData {
     private boolean scoreboardEnabled = false;
     private boolean showBalance = false;
     private double lastBalance = 0.0;
+    private final List<ScoreField> boardOrder = new ArrayList<>();
+    private final Map<ScoreField, Boolean> boardEnabled = new EnumMap<>(ScoreField.class);
 
     public PlayerData(UUID uuid) {
         this.uuid = uuid;
@@ -36,6 +38,20 @@ public class PlayerData {
         for (ChallengeType type : ChallengeType.values()) {
             dailyProgress.put(type, 0.0);
             weeklyProgress.put(type, 0.0);
+        }
+        boardOrder.addAll(Arrays.asList(
+                ScoreField.LEVEL,
+                ScoreField.XP,
+                ScoreField.PROGRESS,
+                ScoreField.BALANCE,
+                ScoreField.KILLS,
+                ScoreField.MOB_KILLS,
+                ScoreField.DEATHS,
+                ScoreField.KM
+        ));
+        for (ScoreField f : ScoreField.values()) {
+            boolean def = f == ScoreField.LEVEL || f == ScoreField.XP || f == ScoreField.PROGRESS;
+            boardEnabled.put(f, def);
         }
     }
 
@@ -119,6 +135,11 @@ public class PlayerData {
         this.skillPoints += amount;
     }
 
+    /** Set the player's skill point balance directly. */
+    public void setSkillPoints(int amount) {
+        this.skillPoints = amount;
+    }
+
     public Map<ChallengeType, Double> getDailyProgress() {
         return dailyProgress;
     }
@@ -183,5 +204,17 @@ public class PlayerData {
 
     public void setLastBalance(double lastBalance) {
         this.lastBalance = lastBalance;
+    }
+
+    public List<ScoreField> getBoardOrder() {
+        return boardOrder;
+    }
+
+    public boolean isFieldEnabled(ScoreField field) {
+        return boardEnabled.getOrDefault(field, false);
+    }
+
+    public void setFieldEnabled(ScoreField field, boolean enabled) {
+        boardEnabled.put(field, enabled);
     }
 }

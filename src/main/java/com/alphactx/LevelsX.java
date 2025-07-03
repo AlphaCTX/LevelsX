@@ -190,11 +190,20 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             d.getStats().addMoneyEarned(money);
             d.setLastBalance(economy.getBalance(k));
         }
+        if (d.isScoreboardEnabled() &&
+            (d.isFieldEnabled(ScoreField.KILLS) || d.isFieldEnabled(ScoreField.MOB_KILLS))) {
+            updateScoreboard(k);
+        }
     }
 
     @EventHandler
     public void onPlayerDeath(PlayerDeathEvent e) {
-        getData(e.getEntity().getUniqueId()).getStats().addDeath();
+        Player p = e.getEntity();
+        PlayerData d = getData(p.getUniqueId());
+        d.getStats().addDeath();
+        if (d.isScoreboardEnabled() && d.isFieldEnabled(ScoreField.DEATHS)) {
+            updateScoreboard(p);
+        }
     }
 
     @EventHandler
@@ -370,20 +379,29 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         if (title.startsWith("Challenge ")) {
             ChallengeType type = ChallengeType.valueOf(title.substring(10));
             String base = "challengeRewards.";
-            if (slot == 0 || slot == 1 || slot == 3 || slot == 4) {
-                String key = slot<2? "daily" : "weekly";
-                String sub  = slot%2==0? "xp" : "money";
-                int delta = click.isShiftClick()?10:1;
-                if (click==ClickType.LEFT) delta = -delta;
-                String path = base + key + (slot<2? ".types."+type.name() : ".types."+type.name()) + "." + sub;
-                if (sub.equals("xp")) {
-                    int v = Math.max(0, getConfig().getInt(path)+delta);
+            if (slot >= 0 && slot <= 5) {
+                String key = slot < 3 ? "daily" : "weekly";
+                int delta = click.isShiftClick() ? 10 : 1;
+                if (click == ClickType.LEFT) delta = -delta;
+                int idx = slot % 3;
+                if (idx == 2) { // goal
+                    String path = key + "Goals." + type.name();
+                    double v = Math.max(0, getConfig().getDouble(path) + delta);
                     getConfig().set(path, v);
+                    if (key.equals("daily")) dailyGoals.put(type, v); else weeklyGoals.put(type, v);
                 } else {
-                    double v = Math.max(0, getConfig().getDouble(path)+delta);
-                    getConfig().set(path, v);
+                    String sub = idx == 0 ? "xp" : "money";
+                    String path = base + key + ".types." + type.name() + "." + sub;
+                    if (sub.equals("xp")) {
+                        int v = Math.max(0, getConfig().getInt(path) + delta);
+                        getConfig().set(path, v);
+                    } else {
+                        double v = Math.max(0, getConfig().getDouble(path) + delta);
+                        getConfig().set(path, v);
+                    }
                 }
-                saveConfig(); openChallengeTypeGui(p, type);
+                saveConfig();
+                openChallengeTypeGui(p, type);
             } else if (slot == 8) {
                 openChallengeConfigGui(p);
             }
@@ -395,7 +413,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             if (slot==0 || slot==1 || slot==3 || slot==4) {
                 boolean isXP = (slot==0 || slot==3);
                 String path = slot<2? "killRewards.players." : "killRewards.mobs.";
-                String sub = (slot%2==0? "xp" : "money");
+                String sub = isXP ? "xp" : "money";
                 int delta = click.isShiftClick()?10:1;
                 if (click==ClickType.LEFT) delta = -delta;
                 if (isXP) {
@@ -454,9 +472,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 else p.setScoreboard(scoreboardManager.getNewScoreboard());
                 openConfigGui(p);
             } else if (slot==1) {
-                d.setShowBalance(!d.isShowBalance());
-                updateScoreboard(p);
-                openConfigGui(p);
+                openScoreboardGui(p);
             } else if (slot==8) {
                 openMainGui(p);
             }
@@ -558,18 +574,45 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         Scoreboard board = scoreboardManager.getNewScoreboard();
         Objective obj = board.registerNewObjective("levelsx","dummy",ChatColor.GREEN+"LevelsX");
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
-        int line = 4;
-        obj.getScore(ChatColor.YELLOW+"Level: "+ChatColor.WHITE+d.getLevel()).setScore(line--);
-        if (d.isShowBalance()) {
-            double bal = economy.getBalance(p);
-            obj.getScore(ChatColor.GOLD+"Balance: "+ChatColor.WHITE+String.format("%.2f", bal)).setScore(line--);
-        }
+
+        Stats s = d.getStats();
+        long count = d.getBoardOrder().stream().filter(d::isFieldEnabled).count();
+        int line = (int)count;
         int needed = d.getLevel()*100;
-        if (d.getLevel() >= levelCap) {
-            obj.getScore(ChatColor.AQUA+"MAX LEVEL").setScore(line--);
-        } else {
-            obj.getScore(ChatColor.YELLOW+"XP: "+ChatColor.WHITE+d.getXp()+"/"+needed).setScore(line--);
-            obj.getScore(createBar((double)d.getXp()/needed)).setScore(line--);
+
+        for (ScoreField f : d.getBoardOrder()) {
+            if (!d.isFieldEnabled(f)) continue;
+            switch (f) {
+                case LEVEL:
+                    obj.getScore(ChatColor.YELLOW+"Level: "+ChatColor.WHITE+d.getLevel()).setScore(line--);
+                    break;
+                case BALANCE:
+                    double bal = economy.getBalance(p);
+                    obj.getScore(ChatColor.GOLD+"Balance: "+ChatColor.WHITE+String.format("%.2f", bal)).setScore(line--);
+                    break;
+                case XP:
+                    obj.getScore(ChatColor.YELLOW+"XP: "+ChatColor.WHITE+d.getXp()+"/"+needed).setScore(line--);
+                    break;
+                case PROGRESS:
+                    if (d.getLevel() >= levelCap) {
+                        obj.getScore(ChatColor.AQUA+"MAX LEVEL").setScore(line--);
+                    } else {
+                        obj.getScore(createBar((double)d.getXp()/needed)).setScore(line--);
+                    }
+                    break;
+                case KILLS:
+                    obj.getScore(ChatColor.YELLOW+"Kills: "+ChatColor.WHITE+s.getKills()).setScore(line--);
+                    break;
+                case MOB_KILLS:
+                    obj.getScore(ChatColor.YELLOW+"Mob Kills: "+ChatColor.WHITE+s.getMobKills()).setScore(line--);
+                    break;
+                case DEATHS:
+                    obj.getScore(ChatColor.YELLOW+"Deaths: "+ChatColor.WHITE+s.getDeaths()).setScore(line--);
+                    break;
+                case KM:
+                    obj.getScore(ChatColor.YELLOW+"KM: "+ChatColor.WHITE+String.format("%.1f", s.getKilometersTraveled())).setScore(line--);
+                    break;
+            }
         }
         p.setScoreboard(board);
     }
@@ -851,7 +894,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         Inventory inv = Bukkit.createInventory(p,9,"Config");
         PlayerData d = getData(p.getUniqueId());
         inv.setItem(0, createItem(Material.COMPARATOR,"Scoreboard", d.isScoreboardEnabled()?"ON":"OFF"));
-        inv.setItem(1, createItem(Material.EMERALD,"Show Balance", d.isShowBalance()?"ON":"OFF"));
+        inv.setItem(1, createItem(Material.PAPER,"Scoreboard Settings"));
         inv.setItem(8, createItem(Material.ARROW,"Back"));
         p.openInventory(inv);
     }
@@ -932,10 +975,15 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         double wmoney = getConfig().getDouble(base + "weekly.types." + t.name() + ".money",
                 getConfig().getDouble(base + "weekly.money", 0.0));
 
+        double dgoal = getConfig().getDouble("dailyGoals." + t.name(), getDefaultGoal(t));
+        double wgoal = getConfig().getDouble("weeklyGoals." + t.name(), getDefaultGoal(t) * 5);
+
         inv.setItem(0, createItem(Material.EXPERIENCE_BOTTLE, "Daily XP", String.valueOf(dxp)));
         inv.setItem(1, createItem(Material.EMERALD, "Daily Money", "$" + dmoney));
+        inv.setItem(2, createItem(Material.TARGET, "Daily Goal", String.valueOf(dgoal)));
         inv.setItem(3, createItem(Material.EXPERIENCE_BOTTLE, "Weekly XP", String.valueOf(wxp)));
         inv.setItem(4, createItem(Material.EMERALD, "Weekly Money", "$" + wmoney));
+        inv.setItem(5, createItem(Material.TARGET, "Weekly Goal", String.valueOf(wgoal)));
         inv.setItem(8, createItem(Material.ARROW, "Back"));
 
         p.openInventory(inv);

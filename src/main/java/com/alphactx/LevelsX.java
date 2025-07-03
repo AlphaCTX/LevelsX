@@ -875,10 +875,162 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         inv.setItem(8, createItem(Material.BARRIER,"Close"));
         p.openInventory(inv);
     }
-    private void openLevelConfigGui(Player p) { /* zie boven */ openLevelConfigGui(p); }
-    private void openChallengeConfigGui(Player p) { /* zie boven */ openChallengeConfigGui(p); }
-    private void openChallengeTypeGui(Player p, ChallengeType t) { /* zie boven */ openChallengeTypeGui(p, t); }
-    private void openKillConfigGui(Player p) { /* zie boven */ openKillConfigGui(p); }
+    private void openLevelConfigGui(Player p) {
+        int rewardSlots = levelCap / 20;
+        int extra = 4;
+        int moneySlot = ((rewardSlots + extra + 8) / 9) * 9 - extra;
+        int itemSlot  = moneySlot + 1;
+        int capSlot   = moneySlot + 2;
+        int backSlot  = moneySlot + 3;
+        int size = backSlot + 1;
+
+        Inventory inv = Bukkit.createInventory(p, size, "Level Config");
+
+        for (int i = 0; i < rewardSlots; i++) {
+            int lvl = (i + 1) * 20;
+            String matName = getConfig().getString("itemRewards." + lvl,
+                    getConfig().getString("itemReward", "DIAMOND"));
+            Material m = Material.matchMaterial(matName);
+            if (m == null) m = Material.BARRIER;
+            inv.setItem(i, createItem(m, "Level " + lvl));
+        }
+
+        double money = getConfig().getDouble("moneyReward", 100.0);
+        inv.setItem(moneySlot, createItem(Material.EMERALD, "Money Reward", "$" + money));
+
+        String defItem = getConfig().getString("itemReward", "DIAMOND");
+        Material m = Material.matchMaterial(defItem);
+        if (m == null) m = Material.BARRIER;
+        inv.setItem(itemSlot, createItem(m, "Default Item"));
+
+        inv.setItem(capSlot, createItem(Material.BEDROCK, "Level Cap", String.valueOf(levelCap)));
+        inv.setItem(backSlot, createItem(Material.ARROW, "Back"));
+
+        p.openInventory(inv);
+    }
+
+    private void openChallengeConfigGui(Player p) {
+        Inventory inv = Bukkit.createInventory(p, 9, "Challenge Config");
+        int i = 0;
+        for (ChallengeType t : ChallengeType.values()) {
+            inv.setItem(i++, createItem(Material.PAPER, t.name()));
+        }
+        inv.setItem(8, createItem(Material.ARROW, "Back"));
+        p.openInventory(inv);
+    }
+
+    private void openChallengeTypeGui(Player p, ChallengeType t) {
+        Inventory inv = Bukkit.createInventory(p, 9, "Challenge " + t.name());
+        String base = "challengeRewards.";
+
+        int dxp = getConfig().getInt(base + "daily.types." + t.name() + ".xp",
+                getConfig().getInt(base + "daily.xp", 20));
+        double dmoney = getConfig().getDouble(base + "daily.types." + t.name() + ".money",
+                getConfig().getDouble(base + "daily.money", 0.0));
+        int wxp = getConfig().getInt(base + "weekly.types." + t.name() + ".xp",
+                getConfig().getInt(base + "weekly.xp", 50));
+        double wmoney = getConfig().getDouble(base + "weekly.types." + t.name() + ".money",
+                getConfig().getDouble(base + "weekly.money", 0.0));
+
+        inv.setItem(0, createItem(Material.EXPERIENCE_BOTTLE, "Daily XP", String.valueOf(dxp)));
+        inv.setItem(1, createItem(Material.EMERALD, "Daily Money", "$" + dmoney));
+        inv.setItem(3, createItem(Material.EXPERIENCE_BOTTLE, "Weekly XP", String.valueOf(wxp)));
+        inv.setItem(4, createItem(Material.EMERALD, "Weekly Money", "$" + wmoney));
+        inv.setItem(8, createItem(Material.ARROW, "Back"));
+
+        p.openInventory(inv);
+    }
+
+    private void openKillConfigGui(Player p) {
+        Inventory inv = Bukkit.createInventory(p, 9, "Kill Config");
+
+        int pxp = getConfig().getInt("killRewards.players.xp", 25);
+        double pmoney = getConfig().getDouble("killRewards.players.money", 0.0);
+        int mxp = getConfig().getInt("killRewards.mobs.xp", 10);
+        double mmoney = getConfig().getDouble("killRewards.mobs.money", 0.0);
+
+        inv.setItem(0, createItem(Material.EXPERIENCE_BOTTLE, "Player XP", String.valueOf(pxp)));
+        inv.setItem(1, createItem(Material.EMERALD, "Player Money", "$" + pmoney));
+        inv.setItem(3, createItem(Material.EXPERIENCE_BOTTLE, "Mob XP", String.valueOf(mxp)));
+        inv.setItem(4, createItem(Material.EMERALD, "Mob Money", "$" + mmoney));
+        inv.setItem(8, createItem(Material.ARROW, "Back"));
+
+        p.openInventory(inv);
+    }
+
+    private void toggleScoreboard(Player p) {
+        PlayerData d = getData(p.getUniqueId());
+        boolean on = !d.isScoreboardEnabled();
+        d.setScoreboardEnabled(on);
+        if (on) {
+            updateScoreboard(p);
+        } else {
+            p.setScoreboard(scoreboardManager.getNewScoreboard());
+        }
+        msg(p, "Scoreboard " + (on ? "aan" : "uit"));
+    }
+
+    private void showLeaderboard(Player p, String stat) {
+        List<Map.Entry<UUID, PlayerData>> list = new ArrayList<>(players.entrySet());
+        Comparator<Map.Entry<UUID, PlayerData>> comp;
+        switch (stat.toLowerCase()) {
+            case "kills":
+                comp = Comparator.comparingInt(e -> e.getValue().getStats().getKills());
+                break;
+            case "mobkills":
+                comp = Comparator.comparingInt(e -> e.getValue().getStats().getMobKills());
+                break;
+            case "deaths":
+                comp = Comparator.comparingInt(e -> e.getValue().getStats().getDeaths());
+                break;
+            case "damage":
+                comp = Comparator.comparingDouble(e -> e.getValue().getStats().getDamageDealt());
+                break;
+            case "distance":
+                comp = Comparator.comparingDouble(e -> e.getValue().getStats().getKilometersTraveled());
+                break;
+            default:
+                msg(p, "Onbekende statistiek");
+                return;
+        }
+        list.sort(comp.reversed());
+        msg(p, "Leaderboard voor " + stat.toLowerCase() + ":");
+        int max = Math.min(10, list.size());
+        for (int i = 0; i < max; i++) {
+            Map.Entry<UUID, PlayerData> e = list.get(i);
+            String name = Bukkit.getOfflinePlayer(e.getKey()).getName();
+            Stats s = e.getValue().getStats();
+            double val;
+            switch (stat.toLowerCase()) {
+                case "kills": val = s.getKills(); break;
+                case "mobkills": val = s.getMobKills(); break;
+                case "deaths": val = s.getDeaths(); break;
+                case "damage": val = s.getDamageDealt(); break;
+                default: val = s.getKilometersTraveled(); break;
+            }
+            String formatted = (stat.equalsIgnoreCase("kills") || stat.equalsIgnoreCase("mobkills") || stat.equalsIgnoreCase("deaths"))
+                    ? String.valueOf((int) val)
+                    : String.format("%.1f", val);
+            msg(p, (i + 1) + ". " + name + ": " + formatted);
+        }
+    }
+
+    private void updateLungCapacity(Player p, PlayerData d) {
+        int lvl = d.getSkillLevel(Skill.LUNG_CAPACITY);
+        int base = 300; // default ticks of air
+        p.setMaximumAir(base + lvl * 20);
+        if (p.getRemainingAir() < base + lvl * 20) {
+            p.setRemainingAir(base + lvl * 20);
+        }
+    }
+
+    private void applyHealing(Player p, PlayerData d) {
+        int lvl = d.getSkillLevel(Skill.HEALING);
+        if (lvl > 0) {
+            double heal = lvl * 2.0; // hearts to health
+            p.setHealth(Math.min(p.getMaxHealth(), p.getHealth() + heal));
+        }
+    }
 
     // === Overige helpers ===
     private String formatTime(long ms) {

@@ -190,11 +190,20 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             d.getStats().addMoneyEarned(money);
             d.setLastBalance(economy.getBalance(k));
         }
+        if (d.isScoreboardEnabled() &&
+            (d.isFieldEnabled(ScoreField.KILLS) || d.isFieldEnabled(ScoreField.MOB_KILLS))) {
+            updateScoreboard(k);
+        }
     }
 
     @EventHandler
     public void onPlayerDeath(PlayerDeathEvent e) {
-        getData(e.getEntity().getUniqueId()).getStats().addDeath();
+        Player p = e.getEntity();
+        PlayerData d = getData(p.getUniqueId());
+        d.getStats().addDeath();
+        if (d.isScoreboardEnabled() && d.isFieldEnabled(ScoreField.DEATHS)) {
+            updateScoreboard(p);
+        }
     }
 
     @EventHandler
@@ -454,9 +463,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
                 else p.setScoreboard(scoreboardManager.getNewScoreboard());
                 openConfigGui(p);
             } else if (slot==1) {
-                d.setShowBalance(!d.isShowBalance());
-                updateScoreboard(p);
-                openConfigGui(p);
+                openScoreboardGui(p);
             } else if (slot==8) {
                 openMainGui(p);
             }
@@ -558,18 +565,45 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         Scoreboard board = scoreboardManager.getNewScoreboard();
         Objective obj = board.registerNewObjective("levelsx","dummy",ChatColor.GREEN+"LevelsX");
         obj.setDisplaySlot(DisplaySlot.SIDEBAR);
-        int line = 4;
-        obj.getScore(ChatColor.YELLOW+"Level: "+ChatColor.WHITE+d.getLevel()).setScore(line--);
-        if (d.isShowBalance()) {
-            double bal = economy.getBalance(p);
-            obj.getScore(ChatColor.GOLD+"Balance: "+ChatColor.WHITE+String.format("%.2f", bal)).setScore(line--);
-        }
+
+        Stats s = d.getStats();
+        long count = d.getBoardOrder().stream().filter(d::isFieldEnabled).count();
+        int line = (int)count;
         int needed = d.getLevel()*100;
-        if (d.getLevel() >= levelCap) {
-            obj.getScore(ChatColor.AQUA+"MAX LEVEL").setScore(line--);
-        } else {
-            obj.getScore(ChatColor.YELLOW+"XP: "+ChatColor.WHITE+d.getXp()+"/"+needed).setScore(line--);
-            obj.getScore(createBar((double)d.getXp()/needed)).setScore(line--);
+
+        for (ScoreField f : d.getBoardOrder()) {
+            if (!d.isFieldEnabled(f)) continue;
+            switch (f) {
+                case LEVEL:
+                    obj.getScore(ChatColor.YELLOW+"Level: "+ChatColor.WHITE+d.getLevel()).setScore(line--);
+                    break;
+                case BALANCE:
+                    double bal = economy.getBalance(p);
+                    obj.getScore(ChatColor.GOLD+"Balance: "+ChatColor.WHITE+String.format("%.2f", bal)).setScore(line--);
+                    break;
+                case XP:
+                    obj.getScore(ChatColor.YELLOW+"XP: "+ChatColor.WHITE+d.getXp()+"/"+needed).setScore(line--);
+                    break;
+                case PROGRESS:
+                    if (d.getLevel() >= levelCap) {
+                        obj.getScore(ChatColor.AQUA+"MAX LEVEL").setScore(line--);
+                    } else {
+                        obj.getScore(createBar((double)d.getXp()/needed)).setScore(line--);
+                    }
+                    break;
+                case KILLS:
+                    obj.getScore(ChatColor.YELLOW+"Kills: "+ChatColor.WHITE+s.getKills()).setScore(line--);
+                    break;
+                case MOB_KILLS:
+                    obj.getScore(ChatColor.YELLOW+"Mob Kills: "+ChatColor.WHITE+s.getMobKills()).setScore(line--);
+                    break;
+                case DEATHS:
+                    obj.getScore(ChatColor.YELLOW+"Deaths: "+ChatColor.WHITE+s.getDeaths()).setScore(line--);
+                    break;
+                case KM:
+                    obj.getScore(ChatColor.YELLOW+"KM: "+ChatColor.WHITE+String.format("%.1f", s.getKilometersTraveled())).setScore(line--);
+                    break;
+            }
         }
         p.setScoreboard(board);
     }
@@ -851,7 +885,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         Inventory inv = Bukkit.createInventory(p,9,"Config");
         PlayerData d = getData(p.getUniqueId());
         inv.setItem(0, createItem(Material.COMPARATOR,"Scoreboard", d.isScoreboardEnabled()?"ON":"OFF"));
-        inv.setItem(1, createItem(Material.EMERALD,"Show Balance", d.isShowBalance()?"ON":"OFF"));
+        inv.setItem(1, createItem(Material.PAPER,"Scoreboard Settings"));
         inv.setItem(8, createItem(Material.ARROW,"Back"));
         p.openInventory(inv);
     }

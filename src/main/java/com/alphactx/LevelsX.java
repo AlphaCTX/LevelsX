@@ -164,10 +164,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         data.setLastBalance(current);
     }
 
-    @EventHandler
-    public void onChat(AsyncPlayerChatEvent event) {
-        event.setFormat(ChatColor.GOLD + "[LevelsX] " + ChatColor.RESET + "%s: %s");
-    }
+
+    // Removed chat formatting override so normal player chat is unaffected
 
     @EventHandler
     public void onEntityDeath(EntityDeathEvent event) {

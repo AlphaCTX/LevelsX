@@ -413,7 +413,7 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             if (slot==0 || slot==1 || slot==3 || slot==4) {
                 boolean isXP = (slot==0 || slot==3);
                 String path = slot<2? "killRewards.players." : "killRewards.mobs.";
-                String sub = (slot%2==0? "xp" : "money");
+                String sub = isXP ? "xp" : "money";
                 int delta = click.isShiftClick()?10:1;
                 if (click==ClickType.LEFT) delta = -delta;
                 if (isXP) {

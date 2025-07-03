@@ -380,8 +380,8 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
             ChallengeType type = ChallengeType.valueOf(title.substring(10));
             String base = "challengeRewards.";
             if (slot == 0 || slot == 1 || slot == 3 || slot == 4) {
-                String key = slot<2? "daily" : "weekly";
-                String sub  = slot%2==0? "xp" : "money";
+                String key = slot < 2 ? "daily" : "weekly";
+                String sub  = (slot == 0 || slot == 3) ? "xp" : "money";
                 int delta = click.isShiftClick()?10:1;
                 if (click==ClickType.LEFT) delta = -delta;
                 String path = base + key + (slot<2? ".types."+type.name() : ".types."+type.name()) + "." + sub;

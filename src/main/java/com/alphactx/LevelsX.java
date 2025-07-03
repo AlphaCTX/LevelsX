@@ -167,11 +167,6 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
     }
 
     @EventHandler
-    public void onChat(AsyncPlayerChatEvent e) {
-        e.setFormat(ChatColor.GOLD + "[LevelsX] " + ChatColor.RESET + "%s: %s");
-    }
-
-    @EventHandler
     public void onEntityDeath(EntityDeathEvent e) {
         if (e.getEntity().getKiller() == null) return;
         Player k = e.getEntity().getKiller();

@@ -379,20 +379,29 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         if (title.startsWith("Challenge ")) {
             ChallengeType type = ChallengeType.valueOf(title.substring(10));
             String base = "challengeRewards.";
-            if (slot == 0 || slot == 1 || slot == 3 || slot == 4) {
-                String key = slot < 2 ? "daily" : "weekly";
-                String sub  = (slot == 0 || slot == 3) ? "xp" : "money";
-                int delta = click.isShiftClick()?10:1;
-                if (click==ClickType.LEFT) delta = -delta;
-                String path = base + key + (slot<2? ".types."+type.name() : ".types."+type.name()) + "." + sub;
-                if (sub.equals("xp")) {
-                    int v = Math.max(0, getConfig().getInt(path)+delta);
+            if (slot >= 0 && slot <= 5) {
+                String key = slot < 3 ? "daily" : "weekly";
+                int delta = click.isShiftClick() ? 10 : 1;
+                if (click == ClickType.LEFT) delta = -delta;
+                int idx = slot % 3;
+                if (idx == 2) { // goal
+                    String path = key + "Goals." + type.name();
+                    double v = Math.max(0, getConfig().getDouble(path) + delta);
                     getConfig().set(path, v);
+                    if (key.equals("daily")) dailyGoals.put(type, v); else weeklyGoals.put(type, v);
                 } else {
-                    double v = Math.max(0, getConfig().getDouble(path)+delta);
-                    getConfig().set(path, v);
+                    String sub = idx == 0 ? "xp" : "money";
+                    String path = base + key + ".types." + type.name() + "." + sub;
+                    if (sub.equals("xp")) {
+                        int v = Math.max(0, getConfig().getInt(path) + delta);
+                        getConfig().set(path, v);
+                    } else {
+                        double v = Math.max(0, getConfig().getDouble(path) + delta);
+                        getConfig().set(path, v);
+                    }
                 }
-                saveConfig(); openChallengeTypeGui(p, type);
+                saveConfig();
+                openChallengeTypeGui(p, type);
             } else if (slot == 8) {
                 openChallengeConfigGui(p);
             }
@@ -966,10 +975,15 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         double wmoney = getConfig().getDouble(base + "weekly.types." + t.name() + ".money",
                 getConfig().getDouble(base + "weekly.money", 0.0));
 
+        double dgoal = getConfig().getDouble("dailyGoals." + t.name(), getDefaultGoal(t));
+        double wgoal = getConfig().getDouble("weeklyGoals." + t.name(), getDefaultGoal(t) * 5);
+
         inv.setItem(0, createItem(Material.EXPERIENCE_BOTTLE, "Daily XP", String.valueOf(dxp)));
         inv.setItem(1, createItem(Material.EMERALD, "Daily Money", "$" + dmoney));
+        inv.setItem(2, createItem(Material.TARGET, "Daily Goal", String.valueOf(dgoal)));
         inv.setItem(3, createItem(Material.EXPERIENCE_BOTTLE, "Weekly XP", String.valueOf(wxp)));
         inv.setItem(4, createItem(Material.EMERALD, "Weekly Money", "$" + wmoney));
+        inv.setItem(5, createItem(Material.TARGET, "Weekly Goal", String.valueOf(wgoal)));
         inv.setItem(8, createItem(Material.ARROW, "Back"));
 
         p.openInventory(inv);

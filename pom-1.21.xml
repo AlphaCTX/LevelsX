@@ -7,7 +7,7 @@
 
   <groupId>com.alphactx</groupId>
   <artifactId>LevelsX</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.17+-1.0.7</version>
   <packaging>jar</packaging>
   <name>LevelsX</name>
 
@@ -26,7 +26,7 @@
     <!-- PlaceholderAPI officiële repo -->
     <repository>
       <id>placeholderapi-ext</id>
-      <url>http://repo.extendedclip.com/content/repositories/placeholderapi/</url>
+      <url>https://repo.extendedclip.com/content/repositories/placeholderapi/</url>
     </repository>
 
     <!-- JitPack (voor andere com.github-artifacts) -->

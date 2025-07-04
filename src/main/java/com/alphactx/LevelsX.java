@@ -8,6 +8,7 @@ import com.alphactx.model.ScoreField;
 import com.alphactx.storage.DataStorage;
 import com.alphactx.storage.SqliteStorage;
 import com.alphactx.storage.MySqlStorage;
+import org.bstats.bukkit.Metrics;
 
 import net.milkbowl.vault.economy.Economy;
 
@@ -118,6 +119,12 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
         int minutes = Math.max(1, getConfig().getInt("autosave", 5));
         autosaveTask = Bukkit.getScheduler()
             .scheduleSyncRepeatingTask(this, this::saveData, 20L*60*minutes, 20L*60*minutes);
+        // Start bStats metrics
+        new Metrics(this, 26371);
+        // Register PlaceholderAPI expansion if available
+        if (Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            new LevelsXExpansion(this).register();
+        }
         getLogger().info("LevelsX enabled");
     }
 
@@ -131,6 +138,13 @@ public class LevelsX extends JavaPlugin implements Listener, TabCompleter {
 
     private PlayerData getData(UUID uuid) {
         return players.computeIfAbsent(uuid, PlayerData::new);
+    }
+
+    /**
+     * Public accessor for other integrations.
+     */
+    public PlayerData getPlayerData(UUID uuid) {
+        return getData(uuid);
     }
 
     // === Events ===

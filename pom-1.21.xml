@@ -95,6 +95,29 @@
           <target>${java.version}</target>
         </configuration>
       </plugin>
+      <!-- Shade plugin to include dependencies like bStats -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>3.5.1</version>
+          <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>shade</goal>
+              </goals>
+              <configuration>
+                <relocations>
+                  <relocation>
+                    <pattern>org.bstats</pattern>
+                    <shadedPattern>com.alphactx.libs.bstats</shadedPattern>
+                  </relocation>
+                </relocations>
+                <createDependencyReducedPom>false</createDependencyReducedPom>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
     </plugins>
   </build>
 </project>
